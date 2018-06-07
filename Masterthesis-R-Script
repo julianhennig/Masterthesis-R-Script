@@ -1,0 +1,4045 @@
+# masterthesis Summed up script ####
+
+rm(list=ls())
+chooseCRANmirror()
+32
+library(dplyr)
+library(data.table)
+library(dtplyr)
+library(reshape)
+library(ggplot2)
+library(RColorBrewer)
+library(car)
+library(pastecs)
+library(psych)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+
+ls()
+
+op<-par(no.readonly=TRUE) #this is done to save the default settings for plotting with base
+
+# multiple measurements of all samples ####
+#Ordner angeben in dem R alles findet
+setwd("/home/julianhennig/Dokumente/Studium/masterThesis/data")
+#R sagen, welche Tabelle er lesen soll - die Tabelle hei?t in R "ISO"
+iso<-read.table("Masterbook.txt",header=TRUE)
+iso<-iso[!is.na(iso$id),]
+# Datum in ein Format bringen, welches R versteht #
+
+iso$date <- strptime(paste(iso$date, "01", sep=""), "%d.%m.%Y")
+iso[1:7,1:7]
+iso$year<-as.factor(iso$year)
+
+dt<-subset(iso, chemTreat=="no"& subSample=="no") # becuase with subs and chemTreat there are
+# several different samples with the same id
+
+eraseOutlier<-function(data, columnName)
+{  c=(subset(data, columnName<=((mean(columnName, na.rm=TRUE))+
+                                  3*(sd(columnName, na.rm=TRUE)))&
+               columnName>=((mean(columnName, na.rm=TRUE))-
+                              3*(sd(columnName, na.rm=TRUE)))));return(c)
+}
+
+dt<-eraseOutlier(dt, dt$d13c)
+dt<-eraseOutlier(dt, dt$d18o)
+
+# alternative to lapply
+a<-aggregate(dt[, c("d13c", "d18o")], list(dt$id), mean)
+b<-aggregate(dt[, c("d13c", "d18o")], list(dt$id), sd)
+c<-aggregate(dt[, c("d13c", "d18o")], list(dt$id), FUN = function(i)max(i) - min(i))
+
+dt$idRun<-paste(dt$id, dt$run)
+dT<-as.data.table(dt)
+dt2<-NULL
+mn<-dT[ , lapply(.SD, mean), by = idRun, .SDcols = c("d13c", "d18o")]
+sd<-dT[ , lapply(.SD, sd), by = idRun, .SDcols = c("d13c", "d18o")]
+ra<-dT[ , lapply(.SD, FUN = function(i)max(i) - min(i)),
+        by = idRun, .SDcols = c("d13c", "d18o")]
+dt2$idRun<-mn$idRun
+dt2$d13c_mean<-mn$d13c
+dt2$d18o_mean<-mn$d18o
+dt2$d13c_sd<-sd$d13c
+dt2$d18o_sd<-sd$d18o
+dt2$d13c_ra<-ra$d13c
+dt2$d18o_ra<-ra$d18o
+dt2<-as.data.table(dt2)
+unique(dt$idRun)
+res<-NULL
+
+for (i in unique(dt$idRun))  {
+  funRes<-unique(subset(dt, idRun==i,
+                        select=c("species", "site", "year", "date", "id", "run")))
+  res<-rbind(res,funRes)
+}
+
+dtNew<-cbind(res, dt2)
+
+
+library(xtable)
+a<-xtable(summary(dtNew))
+aSum<-a[,c(1,2,3,8,9)]
+print.xtable(aSum, type="latex", file="summaryTrees.tex")
+
+
+
+a<-dt2[with(dt2, order(id)), ]
+
+sd13c<-dt2[order(d13c_sd),]
+sd18o<-dt2[order(d18o_sd),]
+
+ra13c<-dt2[order(d13c_ra),]
+ra18o<-dt2[order(d18o_ra),]
+
+
+ggplot(dt2, aes(x=d13c_ra, y=d18o_ra))+geom_point(shape=4)+
+  geom_rug()+
+  scale_x_continuous(name=expression(paste("Range in ", delta^13,"C [‰]")),
+                     breaks= seq(0,3,1), minor_breaks = seq(0, 3, 0.2)) +
+  scale_y_continuous(name=expression(paste("Range in ", delta^18,"O [‰]")),
+                     breaks= seq(0,7,1), minor_breaks = seq(0, 7, 0.2))+
+  theme_bw()+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  labs(title=expression(paste("Intra-sample range in ", delta^13,"C and ",delta^18, "O")))
+
+
+
+mean(dt2$d13c_ra)
+sd(dt2$d13c_ra)
+max(dt2$d13c_ra)
+min(dt2$d13c_ra)
+nrow(subset(dt2, d13c_ra<=0.1))/nrow(dt2)*100
+nrow(subset(dt2, d13c_ra<=0.2))/nrow(dt2)*100
+nrow(subset(dt2, d13c_ra<=0.5))/nrow(dt2)*100
+nrow(subset(dt2, d13c_ra<=1))/nrow(dt2)*100
+nrow(subset(dt2, d13c_ra>=2))/nrow(dt2)*100
+
+mean(dt2$d18o_ra)
+sd(dt2$d18o_ra)
+max(dt2$d18o_ra)
+min(dt2$d18o_ra)
+nrow(subset(dt2, d18o_ra<=0.1))/nrow(dt2)*100
+nrow(subset(dt2, d18o_ra<=0.2))/nrow(dt2)*100
+nrow(subset(dt2, d18o_ra<=0.5))/nrow(dt2)*100
+nrow(subset(dt2, d18o_ra<=1))/nrow(dt2)*100
+nrow(subset(dt2, d18o_ra<=2))/nrow(dt2)*100
+
+
+library(xtable)
+
+dat<-xtable(summary(dt2))
+isoSum<-dt[,c(1,2,4,5,16,20)]
+print.xtable(isoSum, type="latex", file="summary.tex")
+
+dt<-xtable(summary(all))
+isoSum<-dt[,c(1,2,4,5,16,20)]
+print.xtable(isoSum, type="latex", file="summary.tex")
+unique(all$id)
+# OVERVIEW PLOTS ####
+#Ordner angeben in dem R alles findet
+setwd("/home/julianhennig/Dokumente/Studium/masterThesis/data")
+#R sagen, welche Tabelle er lesen soll - die Tabelle hei?t in R "ISO"
+iso<-read.table("Masterbook.txt",header=TRUE)
+iso<-iso[!is.na(iso$id),]
+# Datum in ein Format bringen, welches R versteht #
+
+iso$date <- strptime(paste(iso$date, "01", sep=""), "%d.%m.%Y")
+iso[1:7,1:7]
+iso$year<-as.factor(iso$year)
+
+all<-subset(iso, chemTreat=="no")
+
+
+eraseOutlier<-function(data, columnName)
+{  c=(subset(data, columnName<=((mean(columnName, na.rm=TRUE))+
+                                  3*(sd(columnName, na.rm=TRUE)))&
+               columnName>=((mean(columnName, na.rm=TRUE))-
+                              3*(sd(columnName, na.rm=TRUE)))));return(c)
+}
+
+all<-eraseOutlier(all, all$d13c)
+all<-eraseOutlier(all, all$d18o)
+
+DataTable<-unique(all[,c("site", "date")])
+DataTable<-DataTable[order(DataTable[,1], DataTable[, 2]),]
+# overview table spevific for LaTex NOT NEEDED FOR PLOTS
+# for iso measurements
+library(xtable)
+dt<-xtable(summary(all))
+isoSum<-dt[,c(1,2,4,5,16,20)]
+print.xtable(isoSum, type="latex", file="summary.tex")
+unique(all$id)
+
+# for trees
+ALL<-all[!duplicated(all$id), ] 
+ALL<-subset(ALL, select=c("id", "site", "species", "year", "month"))
+dat<-all
+datT<-as.data.table(dat)
+dt<-NULL
+mn<-datT[ , lapply(.SD, mean), by = id, .SDcols = c("d13c", "d18o")]
+sd<-datT[ , lapply(.SD, sd), by = id, .SDcols = c("d13c", "d18o")]
+dt$id<-mn$id
+dt$d13c_mean<-mn$d13c
+dt$d18o_mean<-mn$d18o
+dt$d13c_sd<-sd$d13c
+dt$d18o_sd<-sd$d18o
+dt<-as.data.table(dt)
+
+a<-cbind(ALL, dt) # just for double checking if id and id are the same
+dt<-cbind(ALL, dt[,-"id"])
+
+dat<-xtable(summary(dt))
+isoSum<-dt[,c(1,2,4,5,16,20)]
+print.xtable(isoSum, type="latex", file="summary.tex")
+
+# GOOD OVERVIEW PLOTS #
+# species_f = ordered to collection date
+all$speciesItalic<-all$species
+levels(all$speciesItalic)<-c("italic('Acer')","italic('Alnus')",
+                        "italic('Betula')","italic('Carpinus')",
+                        "italic('Corylus')","italic('Fagus')",
+                        "italic('Quercus')")
+all$species_f = factor(all$speciesItalic,
+                       levels=c("italic('Alnus')", "italic('Corylus')",
+                                "italic('Betula')","italic('Fagus')",
+                                "italic('Carpinus')", "italic('Acer')",
+                                "italic('Quercus')"))
+# 750 * 500 eps
+ggplot(all, aes(year, d13c))+
+  geom_boxplot(aes(fill=year))+
+  geom_point(size=0.5)+
+  stat_summary(fun.y=mean, colour="red", geom="point", 
+               shape=18, size=3)+
+  facet_grid(site~species_f, labeller= label_parsed)+
+  scale_y_continuous(name=expression(paste(delta^13,"C")),
+                     breaks= seq(-40,-10,2), minor_breaks = seq(-40,-10, 1))+
+  theme_bw()+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  ylab(expression(paste(delta^13,"C")))+
+  ggtitle(expression(paste("Boxplot ", delta^13,"C, overview")))+
+  theme(legend.position="none")
+
+# 750 * 563 eps
+ggplot(all, aes(year, d18o))+geom_boxplot(aes(fill=year))+
+  geom_point(size=0.5)+
+  stat_summary(fun.y=mean, colour="red", geom="point", 
+               shape=18, size=3)+
+  facet_grid(site~species_f, labeller= label_parsed)+
+  scale_y_continuous(name=expression(paste(delta^18,"O")),
+                     breaks= seq(0,50,2), minor_breaks = seq(0,50, 1))+
+  theme_bw()+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  ylab(expression(paste(delta^18,"O")))+
+  ggtitle(expression(paste(delta^18,"O Boxplot, overview")))+
+  theme(legend.position="bottom")
+
+
+# OVERVIEW BETWEEN SITES ARDENNEN AND STEIGERWALD
+dat<-all
+dat$speciesSiteY<-paste(dat$species, dat$site, dat$year)
+datT<-as.data.table(dat)
+dt<-NULL
+mn<-datT[ , lapply(.SD, mean), by = speciesSiteY, .SDcols = c("d13c", "d18o")]
+sd<-datT[ , lapply(.SD, sd), by = speciesSiteY, .SDcols = c("d13c", "d18o")]
+dt$speciesSiteY<-mn$speciesSiteY
+dt$d13c_mean<-mn$d13c
+dt$d18o_mean<-mn$d18o
+dt$d13c_sd<-sd$d13c
+dt$d18o_sd<-sd$d18o
+dt<-as.data.table(dt)
+unique(dat$speciesSiteY)
+res<-NULL
+
+for (i in c(unique(dat$speciesSiteY)))  {
+  funRes<-unique(subset(dat, speciesSiteY==i,
+                        select=c("species", "site", "year", "speciesItalic", "species_f")))
+  res<-rbind(res,funRes)
+}
+
+dt<-cbind(res, dt[,-"speciesSiteY"])
+levels(dt$month)
+
+a<-subset(dt, site=="ARD"|site=="STE")
+a<-subset(a, year=="2016")
+
+a$speciesOrd = factor(a$species,
+                       levels=c("Alnus", "Corylus",
+                                "Betula","Fagus",
+                                "Carpinus", "Acer",
+                                "Quercus"))
+
+p1<-ggplot(a, aes(x=speciesOrd, y=d13c_mean))+geom_line(aes(group=site, colour=site))+
+  theme_bw()+ labs(title="Inter-site variation between Ardennes and Steigerwald")+
+  xlab("")+ylab(expression(paste(delta^13,"C")))+
+  scale_y_continuous(breaks= seq(-30,-15,1), minor_breaks = seq(-30,-15,0.5))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+ggplot(a, aes(x=speciesOrd, y=d18o_mean))+geom_line(aes(group=site, colour=site))+
+  theme_bw()+
+  xlab("Species")+ylab(expression(paste(delta^18,"O")))+
+  scale_y_continuous(breaks= seq(0,50,1), minor_breaks = seq(0,50,0.5))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position="bottom",
+        legend.justification="right",
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(-20,10,0,10))+
+  scale_colour_discrete("")
+# 525*400
+ggarrange(p1,p2, heights = c(2, 2.75),
+          ncol = 1, nrow = 2, align = "v", common.legend = TRUE, legend = "bottom")
+
+# one graph for every site 
+
+# ARD
+mylabels <- c(expression(paste(italic("Alnus glutinosa"))),
+              expression(paste(italic("Corylus avellana"))),
+              expression(paste(italic("Betula pendula"))),
+              expression(paste(italic("Carpinus betulus"))),
+              expression(paste(italic("Fagus sylvatica"))),
+              expression(paste(italic("Acer pseudoplatanos"))),
+              expression(paste(italic("Quercus robur"))))
+ard<-subset(all, site=="ARD")
+p1<-ggplot(ard, aes(speciesOrd, d13c))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Taxa")+
+  ggtitle(expression(paste("Boxplot and number of samples, Ardennen")))+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  theme_bw()+
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))+
+  + opts(axis.text.x=theme_text(face='italic'))
+
+p2<-ggplot(ard, aes(species_f, d18o))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("")+
+  ggtitle("")+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  scale_x_discrete(labels = mylabels, position="top")+
+  theme_bw()
++
+  theme(axis.title.x = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 1, 0), "cm"))
+
+p3<-ggplot(ard, aes(species_f))+
+  geom_bar(aes(fill=year), position = "dodge", colour="black")+scale_x_discrete(labels = mylabels)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+ggarrange(p1,p2+ rremove("x.text"), p3+ rremove("x.text"), heights = c(2, 2, 0.7),
+          ncol = 1, nrow = 3, align = "v",
+          common.legend = TRUE, legend="bottom")
+
+
+
+#DOL
+mylabels <- c(expression(paste(italic("Betula pendula"))),
+              expression(paste(italic("Fagus sylvatica"))),
+              expression(paste(italic("Acer pseudoplatanos"))))
+dol<-subset(all, site=="DOL")
+
+p1<-ggplot(dol, aes(species_f, d13c))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Taxa")+
+  ggtitle(expression(paste("Boxplot and number of samples, Dolomites")))+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  scale_x_discrete(labels = mylabels, position="top")+
+  theme_bw()+
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+p2<-ggplot(dol, aes(species_f, d18o))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("")+
+  ggtitle("")+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  scale_x_discrete(labels = mylabels, position="top")+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 1, 0), "cm"))
+
+p3<-ggplot(dol, aes(species_f))+
+  geom_bar(aes(fill=year), position = "dodge", colour="black")+scale_x_discrete(labels = mylabels)+theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+ggarrange(p1,p2+ rremove("x.text"), p3+ rremove("x.text"), heights = c(2, 2, 0.7),
+          ncol = 1, nrow = 3, align = "v",
+          common.legend = TRUE, legend="bottom")
+
+#MUR
+mylabels <- c(expression(paste(italic("Alnus glutinosa"))),
+              expression(paste(italic("Corylus avellana"))),
+              expression(paste(italic("Betula pendula"))))
+mur<-subset(all, site=="MUR")
+
+p1<-ggplot(mur, aes(species_f, d13c))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Taxa")+
+  ggtitle(expression(paste("Boxplot and number of samples, Müritz")))+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  scale_x_discrete(labels = mylabels, position="top")+
+  theme_bw()+
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+p2<-ggplot(mur, aes(species_f, d18o))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("")+
+  ggtitle("")+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  scale_x_discrete(labels = mylabels, position="top")+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 1, 0), "cm"))
+
+p3<-ggplot(mur, aes(species_f))+
+  geom_bar(aes(fill=year), position = "dodge", colour="black")+scale_x_discrete(labels = mylabels)+theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+ggarrange(p1,p2+ rremove("x.text"), p3+ rremove("x.text"), heights = c(2, 2, 0.7),
+          ncol = 1, nrow = 3, align = "v",
+          common.legend = TRUE, legend="bottom")
+
+
+#STE
+mylabels <- c(expression(paste(italic("Alnus glutinosa"))),
+              expression(paste(italic("Corylus avellana"))),
+              expression(paste(italic("Betula pendula"))),
+              expression(paste(italic("Carpinus betulus"))),
+              expression(paste(italic("Fagus sylvatica"))),
+              expression(paste(italic("Acer pseudoplatanos"))),
+              expression(paste(italic("Quercus robur"))))
+ste<-subset(all, site=="STE")
+
+p1<-ggplot(ste, aes(species_f, d13c))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Taxa")+
+  ggtitle(expression(paste("Boxplot and number of samples, Steigerwald")))+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  scale_x_discrete(labels = mylabels, position="top")+
+  theme_bw()+
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+p2<-ggplot(ste, aes(species_f, d18o))+
+  geom_boxplot(aes(fill=year), position="dodge")+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("")+
+  ggtitle("")+
+  geom_jitter(aes(shape=year),width = 0.1, height = 0.1)+
+  scale_x_discrete(labels = mylabels, position="top")+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 1, 0), "cm"))
+
+p3<-ggplot(ste, aes(species_f))+
+  geom_bar(aes(fill=year), position = "dodge", colour="black")+scale_x_discrete(labels = mylabels)+theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+ggarrange(p1,p2+ rremove("x.text"), p3+ rremove("x.text"), heights = c(2, 2, 0.7),
+          ncol = 1, nrow = 3, align = "v",
+          common.legend = TRUE, legend="bottom")
+
+
+### histogram frequency plot #
+ggplot(all, aes(d13c))+
+  geom_histogram(aes(y=..density..), colour="black", fill="blue", alpha=0.2)+
+  geom_vline(colour="red", linetype=2, aes(xintercept=mean(all$d13c, na.rm = TRUE)))+
+  stat_function(fun=dnorm, 
+                args=list(mean=mean(all$d13c,
+                                    na.rm=TRUE), sd=sd(all$d13c, na.rm=TRUE)),
+                colour="red", size=1)+
+  ggtitle("D13C Values")
+stat.desc(all$d13c, basic=FALSE, norm=TRUE)
+
+ggplot(all, aes(d18o))+
+  geom_histogram(aes(y=..density..), colour="black", fill="grey")+
+  geom_vline(colour="red", linetype=2, aes(xintercept=mean(all$d18o, na.rm = TRUE)))+
+  stat_function(fun=dnorm, 
+                args=list(mean=mean(all$d18o,
+                                    na.rm=TRUE), sd=sd(all$d18o, na.rm=TRUE)),
+                colour="red", size=1)+
+  ggtitle("D18O Values")
+stat.desc(all$d18o, basic=FALSE, norm=TRUE)
+
+# PLOTS FOR POLLEN VORTRAG all sites 13c #
+ggplot(subset(iso, chemTreat=="no"))+
+  geom_histogram(aes(d13c, fill=year),position="dodge")+
+  facet_grid(site~species)
+
+# only ARD 13c
+ggplot(subset(iso, chemTreat=="no"&site=="ARD"))+
+  geom_histogram(aes(d13c, fill=year),position="dodge")+
+  facet_grid(site~species)+
+  ggtitle("Histogram d13c Ardennen")
+
+
+# all sites 18o
+ggplot(subset(iso, chemTreat=="no"))+
+  geom_histogram(aes(d18o, fill=year),position="dodge")+
+  facet_grid(site~species)
+
+# only ARD 18o
+ggplot(subset(iso, chemTreat=="no"&site=="ARD"))+
+  geom_histogram(aes(d18o, fill=year),position="dodge")+
+  facet_grid(site~species)+
+  ggtitle("Histogram d18o Ardennen")
+
+# sites 13c and 18o #
+
+ggplot(all, aes(d13c))+geom_histogram(aes(fill=species), position="stack")+
+  stat_function(fun=dnorm, args=list(mean=mean(all13c$d13c, na.rm=TRUE),
+                                     sd=sd(all13c$d13c, na.rm=TRUE)), colour="black", size=1)
+
+
+# more first impression plots
+# Acer 13c #
+
+#boxplot
+acer13c<-subset(all, species=="Acer")
+a<-ggplot(acer13c, aes(x=site, y=d13c))+geom_boxplot(aes(fill=year))+
+  ggtitle("d13c Acer for all sites and years")+
+  labs(x="Sites", y="delta 13c Values")
+#bar diagram
+b<-ggplot(acer13c, aes(x=site, fill=year))+
+  geom_histogram(colour="black", stat="count", position = "dodge")
+#both together
+grid.arrange(a, b, ncol=1)
+
+# Alnus 13c #
+alnus13c<-subset(all13c, species=="Alnus")
+#boxplot
+alnus13cplot<-ggplot(alnus13c, aes(site, d13c))+geom_boxplot(aes(fill=year))+
+  ggtitle("d13c Alnus for all sites and years")+labs(x="Sites", y="delta 13c Values")
+# bar diagram
+alnus13cfreqplot<-ggplot(alnus13c,  aes(x=site, fill=year))+
+  geom_histogram(colour="black", stat="count", position = "dodge")
+#both
+alnus13cPlot<-grid.arrange(alnus13cplot, alnus13cfreqplot, ncol=1)
+
+# Betula 13c #
+betula13c<-subset(all13c, species=="Betula", chemTreat="no")
+# boxplot
+betula13cplot<-ggplot(betula13c, aes(site, d13c))+geom_boxplot(aes(fill=year), notch=TRUE)+
+  ggtitle("d13c Betula for all sites and years")+labs(x="Sites", y="delta 13c Values")
+#bar diagram
+bet13cFreqPlot<-ggplot(betula13c, aes(site))+
+  geom_histogram(aes(fill=year),colour="black", stat="count", position="dodge")
+# both
+bet13cDPlot<-grid.arrange(betula13cplot, bet13cFreqPlot, ncol=1)
+
+# Carpinus 13c#
+
+carpinus13c<-subset(iso, species=="Carpinus", chemTreat="no")
+#boxplot
+carpinus13cplot<-ggplot(carpinus13c, aes(site, d13c))+geom_boxplot(aes(colour=year), notch = TRUE)
+carpinus13cplot<-carpinus13cplot+ggtitle("d13c Carpinus for all sites and years")+labs(x="Sites", y="delta 13c Values")
+#bar diagram
+carp13cFreqPlot<-ggplot(carpinus13c, aes(site))+geom_histogram(aes(fill=year), stat="count", position="dodge")
+#both together
+carp13cPlot<-grid.arrange(carpinus13cplot, carp13cFreqPlot, ncol=1)
+
+# Corylus 13c #
+
+corylus13c<-subset(iso, species=="Corylus", chemTreat="no")
+#boxplot
+corylus13cplot<-ggplot(corylus13c, aes(site, d13c))+geom_boxplot(aes(colour=year), notch = TRUE)
+corylus13cplot<-corylus13cplot+ggtitle("d13c Corylus for all sites and years")+labs(x="Sites", y="delta 13c Values")
+#bar diagram
+cor13cFreqPlot<-ggplot(corylus13c, aes(site))+geom_histogram(aes(fill=year), stat="count", position="dodge")
+#both together
+cor13cPlot<-grid.arrange(corylus13cplot, cor13cFreqPlot, ncol=1)
+
+
+# Fagus 13c #
+
+fagus13c<-subset(all13c, species=="Fagus")
+#boxplot
+fagus13cplot<-ggplot(fagus13c, aes(site, d13c))+geom_boxplot(aes(colour=year), notch = TRUE)+
+  ggtitle("d13c Fagus for all sites and years")+
+  labs(x="Sites", y="delta 13c Values")
+#bar diagram
+fag13cFreqPlot<-ggplot(fagus13c, aes(site))+geom_histogram(aes(fill=year), stat="count", position="dodge")
+#both together
+fag13cPlot<-grid.arrange(fagus13cplot, fag13cFreqPlot, ncol=1)
+
+# Quercus 13c #
+
+quercus13c<-subset(all13c, species=="Quercus")
+#boxplot
+quercus13cplot<-ggplot(quercus13c, aes(site, d13c))+geom_boxplot(aes(colour=year), notch = TRUE)
+quercus13cplot<-quercus13cplot+ggtitle("d13c Quercus for all sites and years")+labs(x="Sites", y="delta 13c Values")
+#bar diagram
+quercus13cFreqPlot<-ggplot(quercus13c, aes(site))+geom_histogram(aes(fill=year), stat="count", position="dodge")
+#both together
+quercus13cPlot<-grid.arrange(quercus13cplot, quercus13cFreqPlot, ncol=1)
+
+grid.arrange(acer13cPlot, alnus13cPlot, ncol=2)
+grid.arrange(bet13cDPlot, carp13cPlot, ncol=2)
+grid.arrange(cor13cPlot, fag13cPlot, quercus13cPlot, ncol=2)
+
+# PLOTS BY SITE ISOTOPES VS TEMPERATURE ####
+eraseOutlier<-function(data, columnName)
+{  c=(subset(data, columnName<=((mean(columnName, na.rm=TRUE))+
+                                  3*(sd(columnName, na.rm=TRUE))) &
+               columnName>=((mean(columnName, na.rm=TRUE))-
+                              3*(sd(columnName, na.rm=TRUE)))));return(c)
+}
+eraseOutlierKeepNA<-function(data, columnName)
+{  c=(subset(data, is.na(columnName) | columnName<=((mean(columnName, na.rm=TRUE))+
+                                                      3*(sd(columnName, na.rm=TRUE)))&
+               columnName>=((mean(columnName, na.rm=TRUE))-
+                              3*(sd(columnName, na.rm=TRUE)))));return(c)
+}
+
+
+# data for isotopes #
+setwd("/home/julianhennig/Dokumente/Studium/masterThesis/data")
+# or with corrected (or assumed) dates
+iso<-read.table("MasterbookCorDate.txt",header=TRUE)
+
+iso$date <- strptime(paste(iso$date, "01", sep=""), "%d.%m.%Y")
+iso[50:57,1:7]
+iso[1:7,]
+iso$year<-as.factor(iso$year)
+numbers<-c(4,8,12,2,1,7,6,3,5,11,10,9)
+levels(iso$month)
+iso$monthNr<-numbers[iso$month]
+iso$monthF<-as.factor(iso$monthNr)
+iso$speciesYear<-paste(iso$species, iso$year)
+
+all13c<-subset(iso, chemTreat=="no" | is.na(chemTreat),
+               select = c("species", "site","id","month", "monthNr", "monthF",
+                          "d13c","d18o", "date", "year", "speciesYear"))
+all18o<-subset(iso, chemTreat=="no" | is.na(chemTreat),
+               select = c("species", "site","id","month", "monthNr", "monthF",
+                          "d18o", "date", "year", "speciesYear"))
+all13c<-eraseOutlierKeepNA(all13c, all13c$d13c)
+all18o<-eraseOutlierKeepNA(all18o, all18o$d18o)
+
+ard13c<-subset(all13c, site=="ARD" | is.na(site))
+dol13c<-subset(all13c, site=="DOL" | is.na(site))
+mur13c<-subset(all13c, site=="MUR" | is.na(site))
+ste13c<-subset(all13c, site=="STE" | is.na(site))
+
+
+ard18o<-subset(all18o, site=="ARD" | is.na(site))
+dol18o<-subset(all18o, site=="DOL" | is.na(site))
+mur18o<-subset(all18o, site=="MUR" | is.na(site))
+ste18o<-subset(all18o, site=="STE" | is.na(site))
+
+
+
+
+# data for the plots with only one mean value per taxa
+dat<-subset(iso, chemTreat=="no" | is.na(chemTreat),
+               select = c("species", "site","id","month", "monthNr", "monthF",
+                          "d13c","d18o", "date", "year", "speciesYear"))
+dat<-eraseOutlier(dat, dat$d13c)
+dat<-eraseOutlier(dat, dat$d18o)
+
+# ard13c<-subset(all13c, site=="ARD" | is.na(site))
+dat$speciesSiteY<-paste(dat$species, dat$site, dat$year)
+datT<-as.data.table(dat)
+dt<-NULL
+mn<-datT[ , lapply(.SD, mean), by = speciesSiteY, .SDcols = c("d13c", "d18o")]
+sd<-datT[ , lapply(.SD, sd), by = speciesSiteY, .SDcols = c("d13c", "d18o")]
+dt$speciesSiteY<-mn$speciesSiteY
+dt$d13c_mean<-mn$d13c
+dt$d18o_mean<-mn$d18o
+dt$d13c_sd<-sd$d13c
+dt$d18o_sd<-sd$d18o
+dt<-as.data.table(dt)
+unique(dat$speciesSiteY)
+res<-NULL
+
+for (i in c(unique(dat$speciesSiteY)))  {
+  funRes<-unique(subset(dat, speciesSiteY==i,
+                        select=c("speciesSiteY", "month", "monthNr", "monthF", "site", "species", "year")))
+  res<-rbind(res,funRes)
+}
+
+dt<-cbind(res, dt[,-"speciesSiteY"])
+levels(dt$month)
+
+
+# data for weather MONTHLY #
+dat<-read.delim("weatherData.txt",header=TRUE)
+dat[1:7,1:5]
+dat$yearType<-paste(dat$year, dat$type)
+monthNr<-c(rep(1:12,48))
+dat$monthNr<-monthNr
+
+tempData<-subset(dat, type!="prec")
+ardTemp<-subset(tempData, site=="ard")
+dolTemp<-subset(tempData, site=="dol")
+murTemp<-subset(tempData, site=="mur")
+steTemp<-subset(tempData, site=="ste")
+
+precData<-subset(dat, type=="prec")
+ardPrec<-subset(precData, site=="ard")
+dolPrec<-subset(precData, site=="dol")
+murPrec<-subset(precData, site=="mur")
+stePrec<-subset(precData, site=="ste")
+
+# annual means
+
+tempData$siteYear<-paste(tempData$site, tempData$year)
+tempDataT<-as.data.table(tempData)
+mn<-tempDataT[ , lapply(.SD, mean), by = siteYear, .SDcols = "value"]
+
+write.table(mn, "annualMean.txt", sep = "\t")
+
+# data for weather DAILY #
+dailyDat<-read.delim("weatherDataDaily.txt",header=TRUE)
+dailyDat$date <- strptime(paste(dailyDat$date, "01", sep=""), "%d.%m.%Y")
+dailyArd<-subset(dailyDat, site=="ard")
+dailyDol<-subset(dailyDat, site=="dol")
+dailyMur<-subset(dailyDat, site=="mur")
+dailySte<-subset(dailyDat, site=="ste")
+
+
+############################# d13c vs T 
+# only mean values per taxa
+# ardennen 2015 #
+par(mar=c(5,4,4,5))
+plot(ardTemp$value~as.numeric(ardTemp$month), ardTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,26,2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(0,10,20,30))
+axis(side = 4, at=c(2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmax"],
+      ardTemp$value[ardTemp$yearType == "2015 tmax"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmin"],
+      ardTemp$value[ardTemp$yearType == "2015 tmin"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmean"],
+      ardTemp$value[ardTemp$yearType == "2015 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=ard13c$monthNr, y=ard13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(3, 5), y=c(mean((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+                      mean((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(3, 5),c(mean((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(3, 5),c(mean((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Ardennen 2015")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="ARD"&year=="2015")
+points(jitter(DT$monthNr, factor=1.25),DT$d13c_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+
+
+# Ardennen 2016 #
+par(mar=c(5,4,4,5))
+plot(ardTemp$value~as.numeric(ardTemp$month), ardTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,26,2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(0,10,20,30))
+axis(side = 4, at=c(2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmax"],
+      ardTemp$value[ardTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmin"],
+      ardTemp$value[ardTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmean"],
+      ardTemp$value[ardTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=ard13c$monthNr, y=ard13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(3, 5), y=c(mean((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+                      mean((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(3, 5),c(mean((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(3, 5),c(mean((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Ardennen 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="ARD"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d13c_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+
+# dolomites 2016 #
+dolTemp<-subset(tempData, site=="dol")
+par(mar=c(5,4,4,5))
+plot(dolTemp$value~dolTemp$monthNr, dolTemp, type="n",xlim=c(1,12), xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(dolTemp$value),max(dolTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(-10,0,10,20,30))
+axis(side = 4, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12), labels=c("jan", "feb", "mar", "apr", "may",
+                                                       "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmax"],
+      dolTemp$value[dolTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmin"],
+      dolTemp$value[dolTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmean"],
+      dolTemp$value[dolTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=dol13c$monthNr, y=dol13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(5), y=c(mean((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(5),c(mean((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(5),c(mean((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Dolomites 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="DOL"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d13c_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+# mueritz 2016 #
+murTemp<-subset(tempData, site=="mur")
+
+par(mar=c(5,4,4,5))
+plot(murTemp$value~as.numeric(murTemp$month), murTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(murTemp$value),max(murTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(-10,0,10,20,30))
+axis(side = 4, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmax"],
+      murTemp$value[murTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmin"],
+      murTemp$value[murTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmean"],
+      murTemp$value[murTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=mur13c$monthNr, y=mur13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(2, 4), y=c(mean((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                      mean((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 4),c(mean((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE))-
+         c(sd((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE)),
+       c(2, 4),c(mean((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE))+
+         c(sd((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Müritz 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="MUR"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d13c_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+
+# steigerwald #
+steTemp<-subset(tempData, site=="ste")
+
+par(mar=c(5,4,4,5))
+plot(steTemp$value~as.numeric(steTemp$month), steTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(steTemp$value),max(steTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(-10,0,10,20,30))
+axis(side = 4, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmax"],
+      steTemp$value[steTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmin"],
+      steTemp$value[steTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmean"],
+      steTemp$value[steTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+
+plot(x=ste13c$monthNr, y=ste13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+
+points(x=c(2, 5), y=c(mean((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                      mean((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 5),c(mean((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(2, 5),c(mean((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Steigerwald 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="STE"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d13c_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+
+
+# with 18o
+# ardennen 2015 #
+par(mar=c(5,4,4,5))
+plot(ardTemp$value~as.numeric(ardTemp$month), ardTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,26,2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(0,10,20,30))
+axis(side = 4, at=c(2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmax"],
+      ardTemp$value[ardTemp$yearType == "2015 tmax"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmin"],
+      ardTemp$value[ardTemp$yearType == "2015 tmin"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmean"],
+      ardTemp$value[ardTemp$yearType == "2015 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=ard18o$monthNr, y=ard18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(3, 5), y=c(mean((subset(ard18o, year=="2015"&monthNr=="3"))$d18o, na.rm=TRUE),
+                      mean((subset(ard18o, year=="2015"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(3, 5),c(mean((subset(ard18o, year=="2015"&monthNr=="3"))$d18o, na.rm=TRUE),
+                 mean((subset(ard18o, year=="2015"&monthNr=="5"))$d18o, na.rm=TRUE))-
+         c(sd((subset(ard18o, year=="2015"&monthNr=="3"))$d18o, na.rm=TRUE),
+           sd((subset(ard18o, year=="2015"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       c(3, 5),c(mean((subset(ard18o, year=="2015"&monthNr=="3"))$d18o, na.rm=TRUE),
+                 mean((subset(ard18o, year=="2015"&monthNr=="5"))$d18o, na.rm=TRUE))+
+         c(sd((subset(ard18o, year=="2015"&monthNr=="3"))$d18o, na.rm=TRUE),
+           sd((subset(ard18o, year=="2015"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+
+title(main=expression(paste(delta^18,"O vs near surface temperature, Ardennen 2015")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="ARD"&year=="2015")
+points(jitter(DT$monthNr, factor=1.25),DT$d18o_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+
+
+# Ardennen 2016 #
+par(mar=c(5,4,4,5))
+plot(ardTemp$value~as.numeric(ardTemp$month), ardTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,26,2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(0,10,20,30))
+axis(side = 4, at=c(2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmax"],
+      ardTemp$value[ardTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmin"],
+      ardTemp$value[ardTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmean"],
+      ardTemp$value[ardTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=ard18o$monthNr, y=ard18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(3, 5), y=c(mean((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+                      mean((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(3, 5),c(mean((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+                 mean((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))-
+         c(sd((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+           sd((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       c(3, 5),c(mean((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+                 mean((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))+
+         c(sd((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+           sd((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs near surface temperature, Ardennen 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="ARD"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d18o_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+
+# dolomites 2016 #
+dolTemp<-subset(tempData, site=="dol")
+par(mar=c(5,4,4,5))
+plot(dolTemp$value~dolTemp$monthNr, dolTemp, type="n",xlim=c(1,12), xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(dolTemp$value),max(dolTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(-10,0,10,20,30))
+axis(side = 4, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12), labels=c("jan", "feb", "mar", "apr", "may",
+                                                       "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmax"],
+      dolTemp$value[dolTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmin"],
+      dolTemp$value[dolTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmean"],
+      dolTemp$value[dolTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=dol18o$monthNr, y=dol18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(5), y=c(mean((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(5),c(mean((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))-
+         c(sd((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       c(5),c(mean((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))+
+         c(sd((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs near surface temperature, Dolomites 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="DOL"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d18o_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+# mueritz 2016 #
+murTemp<-subset(tempData, site=="mur")
+
+par(mar=c(5,4,4,5))
+plot(murTemp$value~as.numeric(murTemp$month), murTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(murTemp$value),max(murTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(-10,0,10,20,30))
+axis(side = 4, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmax"],
+      murTemp$value[murTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmin"],
+      murTemp$value[murTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmean"],
+      murTemp$value[murTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=mur18o$monthNr, y=mur18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(x=c(2, 4), y=c(mean((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                      mean((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 4),c(mean((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE))-
+         c(sd((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE)),
+       c(2, 4),c(mean((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE))+
+         c(sd((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs near surface temperature, Müritz 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="MUR"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d18o_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+
+
+# steigerwald #
+steTemp<-subset(tempData, site=="ste")
+
+par(mar=c(5,4,4,5))
+plot(steTemp$value~as.numeric(steTemp$month), steTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(steTemp$value),max(steTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=4, at=c(-10,0,10,20,30))
+axis(side = 4, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmax"],
+      steTemp$value[steTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmin"],
+      steTemp$value[steTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmean"],
+      steTemp$value[steTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+
+plot(x=ste18o$monthNr, y=ste18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=2)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+
+points(x=c(2, 5), y=c(mean((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                      mean((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 5),c(mean((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))-
+         c(sd((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       c(2, 5),c(mean((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))+
+         c(sd((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs near surface temperature, Steigerwald 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=2, line = 2.5, cex=1)
+mtext("near surface", side=4, line = 2.5)
+mtext("temperature [°C]", side=4, line = 3.5)
+
+DT<-subset(dt, site=="STE"&year=="2016")
+points(jitter(DT$monthNr, factor=1.25),DT$d18o_mean,
+       col = c("red", "blue", "darkgreen", "black",
+               "orange", "green", "purple")[as.numeric(DT$species)],
+       pch=as.numeric(DT$species))
+legend(
+  x ="bottomright",
+  legend = (DT$species),
+  col = c("red", "blue", "darkgreen", "black",
+          "orange", "green", "purple")[as.numeric(DT$species)],
+  pch = as.numeric(DT$species),
+  cex=0.7)
+# all measurements in the plot
+# ardennen 2015 #
+par(mar=c(5,5,4,4))
+plot(ardTemp$value~as.numeric(ardTemp$month), ardTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,26,2), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(0,10,20,30))
+axis(side = 2, at=c(2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmax"],
+      ardTemp$value[ardTemp$yearType == "2015 tmax"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmin"],
+      ardTemp$value[ardTemp$yearType == "2015 tmin"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2015 tmean"],
+      ardTemp$value[ardTemp$yearType == "2015 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=ard13c$monthNr, y=ard13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(ard13c$monthNr[ard13c$year=="2015"], factor=0.3),
+       ard13c$d13c[ard13c$year=="2015"], pch=1, col=1)
+
+points(x=c(3, 5), y=c(mean((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+                      mean((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(3, 5),c(mean((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(3, 5),c(mean((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(ard13c, year=="2015"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2015"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Ardennen 2015")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=4, line = 2.5, cex=1)
+mtext("near surface", side=2, line = 3.5)
+mtext("temperature [°C]", side=2, line = 2.5)
+
+# Ardennen 2016 #
+par(mar=c(5,5,4,4))
+plot(ardTemp$value~as.numeric(ardTemp$month), ardTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,26,2), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(0,10,20,30))
+axis(side = 2, at=c(2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmax"],
+      ardTemp$value[ardTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmin"],
+      ardTemp$value[ardTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(ardTemp$monthNr[ardTemp$yearType == "2016 tmean"],
+      ardTemp$value[ardTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=ard13c$monthNr, y=ard13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(ard13c$monthNr[ard13c$year=="2016"], factor=0.3),
+       ard13c$d13c[ard13c$year=="2016"], pch=1, col=1)
+
+points(x=c(3, 5), y=c(mean((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+                      mean((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(3, 5),c(mean((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(3, 5),c(mean((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+                 mean((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(ard13c, year=="2016"&monthNr=="3"))$d13c, na.rm=TRUE),
+           sd((subset(ard13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Ardennen 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=4, line = 2.5, cex=1)
+mtext("near surface", side=2, line = 3.5)
+mtext("temperature [°C]", side=2, line = 2.5)
+
+
+# dolomites 2016 #
+dolTemp<-subset(tempData, site=="dol")
+par(mar=c(5,5,4,4))
+plot(dolTemp$value~dolTemp$monthNr, dolTemp, type="n",xlim=c(1,12), xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(dolTemp$value),max(dolTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(-10,0,10,20,30))
+axis(side = 2, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12), labels=c("jan", "feb", "mar", "apr", "may",
+                                                       "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmax"],
+      dolTemp$value[dolTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmin"],
+      dolTemp$value[dolTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(dolTemp$monthNr[dolTemp$yearType == "2016 tmean"],
+      dolTemp$value[dolTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=dol13c$monthNr, y=dol13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(dol13c$monthNr[dol13c$year=="2016"], factor=0.3),
+       dol13c$d13c[dol13c$year=="2016"], pch=1, col=1)
+
+points(x=c(5), y=c(mean((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(5),c(mean((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(5),c(mean((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(dol13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Dolomites 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=4, line = 2.5, cex=1)
+mtext("near surface", side=2, line = 3.5)
+mtext("temperature [°C]", side=2, line = 2.5)
+
+# mueritz 2016 #
+murTemp<-subset(tempData, site=="mur")
+
+par(mar=c(5,5,4,4))
+plot(murTemp$value~as.numeric(murTemp$month), murTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(murTemp$value),max(murTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(-10,0,10,20,30))
+axis(side = 2, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmax"],
+      murTemp$value[murTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmin"],
+      murTemp$value[murTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(murTemp$monthNr[murTemp$yearType == "2016 tmean"],
+      murTemp$value[murTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+plot(x=mur13c$monthNr, y=mur13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(mur13c$monthNr[mur13c$year=="2016"], factor=0.3),
+       mur13c$d13c[mur13c$year=="2016"], pch=1, col=1)
+
+points(x=c(2, 4), y=c(mean((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                      mean((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 4),c(mean((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE))-
+         c(sd((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE)),
+       c(2, 4),c(mean((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE))+
+         c(sd((subset(mur13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(mur13c, year=="2016"&monthNr=="4"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Müritz 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=4, line = 2.5, cex=1)
+mtext("near surface", side=2, line = 3.5)
+mtext("temperature [°C]", side=2, line = 2.5)
+
+
+# steigerwald #
+steTemp<-subset(tempData, site=="ste")
+
+par(mar=c(5,5,4,4))
+plot(steTemp$value~as.numeric(steTemp$month), steTemp, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(min(steTemp$value),max(steTemp$value),2), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(-10,0,10,20,30))
+axis(side = 2, at=c(-8,-6,-4,-2,2,4,6,8,12,14,16,18,22,24,26,28), tck=-0.02, cex.axis=0.75)
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmax"],
+      steTemp$value[steTemp$yearType == "2016 tmax"],
+      col = "#09c14a", lty=2)
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmin"],
+      steTemp$value[steTemp$yearType == "2016 tmin"],
+      col = "#09c14a", lty=2)
+lines(steTemp$monthNr[steTemp$yearType == "2016 tmean"],
+      steTemp$value[steTemp$yearType == "2016 tmean"],
+      col = "#09c14a", lwd=1)
+par(new=T)
+
+
+plot(x=ste13c$monthNr, y=ste13c$d13c, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(ste13c$monthNr[ste13c$year=="2016"], factor=0.3),
+       ste13c$d13c[ste13c$year=="2016"], pch=1, col=1)
+
+points(x=c(2, 5), y=c(mean((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                      mean((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 5),c(mean((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))-
+         c(sd((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       c(2, 5),c(mean((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+                 mean((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE))+
+         c(sd((subset(ste13c, year=="2016"&monthNr=="2"))$d13c, na.rm=TRUE),
+           sd((subset(ste13c, year=="2016"&monthNr=="5"))$d13c, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^13,"C vs near surface temperature, Steigerwald 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^13,"C VPDB")), side=4, line = 2.5, cex=1)
+mtext("near surface", side=2, line = 3.5)
+mtext("temperature [°C]", side=2, line = 2.5)
+
+
+
+############################# d18o vs prec #
+# ardennen 2016 #
+
+par(mar=c(5,5,4,4))
+plot(ardPrec$value~as.numeric(ardPrec$month), ardPrec, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,300,10), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(seq(0,300,10)))
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(x=ardPrec$monthNr[ardPrec$yearType=="2016 prec"],
+      y=ardPrec$value[ardPrec$yearType=="2016 prec"],
+      col = "#1495e0", lty=1)
+par(new=T)
+
+plot(x=ard18o$monthNr, y=ard18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(ard18o$monthNr[ard18o$year=="2016"], factor=0.3),
+       ard18o$d18o[ard18o$year=="2016"], pch=1, col=1)
+
+points(x=c(3, 5), y=c(mean((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+                      mean((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(3, 5),c(mean((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+                 mean((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))-
+         c(sd((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+           sd((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       c(3, 5),c(mean((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+                 mean((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))+
+         c(sd((subset(ard18o, year=="2016"&monthNr=="3"))$d18o, na.rm=TRUE),
+           sd((subset(ard18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs precipitation, Ardennen 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=4, line = 2.5, cex=1)
+mtext("precipitation [mm]", side=2, line = 2.5)
+
+
+# dolomites 2016 #
+
+par(mar=c(5,5,4,4))
+plot(dolPrec$value~as.numeric(dolPrec$month), dolPrec, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,300,10), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(seq(0,300,10)))
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(x=dolPrec$monthNr[dolPrec$yearType=="2016 prec"],
+      y=dolPrec$value[dolPrec$yearType=="2016 prec"],
+      col = "#1495e0", lty=1)
+par(new=T)
+
+plot(x=dol18o$monthNr, y=dol18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(dol18o$monthNr[dol18o$year=="2016"], factor=0.3),
+       dol18o$d18o[dol18o$year=="2016"], pch=1, col=1)
+
+points(x=c(5), y=c(mean((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(5),c(mean((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))-
+         c(sd((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       c(5),c(mean((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))+
+         c(sd((subset(dol18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs precipitation, Dolomites 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=4, line = 2.5, cex=1)
+mtext("precipitation [mm]", side=2, line = 2.5)
+
+
+# mueritz #
+
+
+par(mar=c(5,5,4,4))
+plot(murPrec$value~as.numeric(murPrec$month), murPrec, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,300,10), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(seq(0,300,10)))
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(x=murPrec$monthNr[murPrec$yearType=="2016 prec"],
+      y=murPrec$value[murPrec$yearType=="2016 prec"],
+      col = "#1495e0", lty=1)
+par(new=T)
+
+plot(x=mur18o$monthNr, y=mur18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(mur18o$monthNr[mur18o$year=="2016"], factor=0.3),
+       mur18o$d18o[mur18o$year=="2016"], pch=1, col=1)
+
+points(x=c(2, 4), y=c(mean((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                      mean((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 4),c(mean((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE))-
+         c(sd((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE)),
+       c(2, 4),c(mean((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE))+
+         c(sd((subset(mur18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(mur18o, year=="2016"&monthNr=="4"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs precipitation, M?ritz 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O vs VSMOW")), side=4, line = 2.5, cex=1)
+mtext("precipitation [mm]", side=2, line = 2.5)
+
+
+# steigerwald #
+
+
+
+par(mar=c(5,5,4,4))
+plot(stePrec$value~as.numeric(stePrec$month), stePrec, type="n", xlab="",
+     ylab = "", axes=FALSE)
+abline(h=seq(0,300,10), v=1:12, col="gray", lty=3)
+axis(side=2, at=c(seq(0,300,10)))
+axis(side=1,at=c(1,2,3,4,5,6,7,8,9,10,11,12),
+     labels=c("jan", "feb", "mar", "apr", "may",
+              "jun", "jul", "aug", "sep", "oct", "nov", "dec"))
+lines(x=stePrec$monthNr[stePrec$yearType=="2016 prec"],
+      y=stePrec$value[stePrec$yearType=="2016 prec"],
+      col = "#1495e0", lty=1)
+par(new=T)
+
+plot(x=ste18o$monthNr, y=ste18o$d18o, xlim = c(1,12), type="n", axes=FALSE,
+     xlab = "", ylab = "")
+axis(side=4)
+# axis(side=1, at=c(1:12), labels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", 
+#                                     "aug", "sep", "oct", "nov", "dec"))
+points(jitter(ste18o$monthNr[ste18o$year=="2016"], factor=0.3),
+       ste18o$d18o[ste18o$year=="2016"], pch=1, col=1)
+
+points(x=c(2, 5), y=c(mean((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                      mean((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       pch=16, col="red")
+
+arrows(c(2, 5),c(mean((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))-
+         c(sd((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       c(2, 5),c(mean((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+                 mean((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE))+
+         c(sd((subset(ste18o, year=="2016"&monthNr=="2"))$d18o, na.rm=TRUE),
+           sd((subset(ste18o, year=="2016"&monthNr=="5"))$d18o, na.rm=TRUE)),
+       code=3, length=0.05, angle = 90, lwd = 2, col="red")
+
+title(main=expression(paste(delta^18,"O vs precipitation, Steigerwald 2016")),
+      cex.main=1.2, line = 2)
+mtext("month", side=1, line = 2.5)
+mtext(expression(paste(delta^18,"O VSMOW")), side=4, line = 2.5, cex=1)
+mtext("precipitation [mm]", side=2, line = 2.5)
+
+# LINEAR CORRELATION MODEL AFTER LOADER AND HEMMING ####
+library(devtools)
+eraseOutlier<-function(data, columnName)
+{  c=(subset(data, columnName<=((mean(columnName, na.rm=TRUE))+
+                                  3*(sd(columnName, na.rm=TRUE)))&
+               columnName>=((mean(columnName, na.rm=TRUE))-
+                              3*(sd(columnName, na.rm=TRUE)))));return(c)
+}
+
+eraseOutlierKeepNA<-function(data, columnName)
+{  c=(subset(data, is.na(columnName) | columnName<=((mean(columnName, na.rm=TRUE))+
+                                                      3*(sd(columnName, na.rm=TRUE)))&
+               columnName>=((mean(columnName, na.rm=TRUE))-
+                              3*(sd(columnName, na.rm=TRUE)))));return(c)
+}
+
+
+
+#R sagen, welche Tabelle er lesen soll - die Tabelle hei?t in R "ISO"
+setwd("/home/julianhennig/Dokumente/Studium/masterThesis/data")
+dat<-read.delim("weatherVsIsoCorDate.txt",header=TRUE)
+dat<-subset(dat, chemTreat!="yes")
+dat<-subset(dat, select = -chemTreat)
+dat$date <- strptime(paste(dat$date, "01", sep=""), "%d.%m.%Y")
+dat$week<-strftime(c(dat$date), format = "%V")
+dat$weekY<-paste(dat$year,dat$week)
+dat$year<-as.factor(dat$year)
+
+dat<-eraseOutlier(dat, dat$d13c)
+dat<-eraseOutlier(dat, dat$d18o)
+
+# new plot a la loader and hemming 2001 #
+dat$speciesSiteY<-paste(dat$species, dat$site, dat$year)
+datT<-as.data.table(dat)
+dt<-NULL
+mn<-datT[ , lapply(.SD, mean), by = speciesSiteY, .SDcols = c("d13c", "d18o")]
+sd<-datT[ , lapply(.SD, sd), by = speciesSiteY, .SDcols = c("d13c", "d18o")]
+dt$speciesSiteY<-mn$speciesSiteY
+dt$d13c_mean<-mn$d13c
+dt$d18o_mean<-mn$d18o
+dt$d13c_sd<-sd$d13c
+dt$d18o_sd<-sd$d18o
+dt<-as.data.table(dt)
+unique(dat$speciesSiteY)
+res<-NULL
+
+for (i in c(unique(dat$speciesSiteY)))  {
+  funRes<-unique(subset(dat, speciesSiteY==i, select=c("speciesSiteY", "month",
+                                                       "tmeanA","tmeanB", "tmeanC",
+                                                       "tminA", "tminB", "tminC",
+                                                       "tmaxA", "tmaxB", "tmaxC",
+                                                       "precA", "precB", "precC",
+                                                       "site", "species", "year")))
+  res<-rbind(res,funRes)
+}
+
+dt<-cbind(res, dt[,-"speciesSiteY"])
+write.table(dt, "meanBySpeciesSiteYear.txt", sep="\t") 
+
+equation = function(x) {
+  lm_coef <- list(a = round(coef(x)[1], digits = 2),
+                  b = round(coef(x)[2], digits = 2),
+                  r2 = round(summary(x)$r.squared, digits = 2));
+  lm_eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(R)^2~"="~r2,lm_coef)
+  as.character(as.expression(lm_eq));                 
+}
+
+
+# Acer
+
+
+dtS<-subset(x=dt, species=="Acer"&year=="2016")
+as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d13c_mean<-rep(dtS[1:(nrow(dtS)),"d13c_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c("tmeanB", "tmeanC", "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+# for the next step the number of objests of dtS is imprtant -> in this case 3 -> thats why 
+# dtN$value has three times the input of "type"-based values
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d13c_mean ~ tmeanB, data = dtS)
+fit2<-lm(d13c_mean ~ tmeanC, data = dtS)
+
+# 700*350, plot height 6.5cm
+a<-subset(dtN, type==c("tmeanB", "tmeanC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^13,"C, ", italic("A. psedoplatanus") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+fit1<-lm(d13c_mean ~ tmaxB, data = dtS)
+fit2<-lm(d13c_mean ~ tmaxC, data = dtS)
+# 700*400
+a<-subset(dtN, type==c("tmaxB", "tmaxC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^13,"C, ", italic("A. psedoplatanus") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+# 18o
+
+
+dtS<-subset(x=dt, species=="Acer"&year=="2016")
+as.data.frame(t(dtS))
+dtTemp<-as.data.frame(t(dtS))
+
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c("tmeanB", "tmeanC", "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d18o_mean ~ tmeanB, data = dtS)
+fit2<-lm(d18o_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c("tmeanB", "tmeanC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^18,"O, ", italic("A. psedoplatanus") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+fit1<-lm(d18o_mean ~ tmaxB, data = dtS)
+fit2<-lm(d18o_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c("tmaxB", "tmaxC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^18,"O, ", italic("A. psedoplatanus") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+
+# Betula
+
+
+dtS<-subset(x=dt, species=="Betula"&year=="2016")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d13c_mean<-rep(dtS[1:(nrow(dtS)),"d13c_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"],
+             dtS[4,"tmeanB"], dtS[4,"tmeanC"],
+             dtS[4,"tmaxB"], dtS[4,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d13c_mean ~ tmeanB, data = dtS)
+fit2<-lm(d13c_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^13,"C, ", italic("B. pendula") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+fit1<-lm(d13c_mean ~ tmaxB, data = dtS)
+fit2<-lm(d13c_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^13,"C, ", italic("B. pendula") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+
+
+# 18O
+
+dtS<-subset(x=dt, species=="Betula"&year=="2016")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"],
+             dtS[4,"tmeanB"], dtS[4,"tmeanC"],
+             dtS[4,"tmaxB"], dtS[4,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d18o_mean ~ tmeanB, data = dtS)
+fit2<-lm(d18o_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^18,"O, ", italic("B. pendula") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+fit1<-lm(d18o_mean ~ tmaxB, data = dtS)
+fit2<-lm(d18o_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^18,"O, ", italic("B. pendula") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+
+
+# Carpinus
+
+dtS<-subset(x=dt, species=="Carpinus")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d13c_mean<-rep(dtS[1:(nrow(dtS)),"d13c_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d13c_mean ~ tmeanB, data = dtS)
+fit2<-lm(d13c_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^13,"C, ", italic("C. betulus") )))+
+  scale_x_continuous(limits = c(0, 15), breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+fit1<-lm(d13c_mean ~ tmaxB, data = dtS)
+fit2<-lm(d13c_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^13,"C, ", italic("C. betulus") )))+
+  scale_x_continuous(limits = c(3, 20), breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+# 18o
+
+
+dtS<-subset(x=dt, species=="Carpinus")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d18o_mean ~ tmeanB, data = dtS)
+fit2<-lm(d18o_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^18,"O, ", italic("C. betulus") )))+
+  scale_x_continuous(limits = c(0,15), breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+fit1<-lm(d18o_mean ~ tmaxB, data = dtS)
+fit2<-lm(d18o_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^18,"O, ", italic("C. betulus") )))+
+  scale_x_continuous(limits = c(3,20), breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+# Fagus
+
+dtS<-subset(x=dt, species=="Fagus"&year=="2016")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d13c_mean<-rep(dtS[1:(nrow(dtS)),"d13c_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d13c_mean ~ tmeanB, data = dtS)
+fit2<-lm(d13c_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^13,"C, ", italic("F. sylvatica") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+fit1<-lm(d13c_mean ~ tmaxB, data = dtS)
+fit2<-lm(d13c_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^13,"C, ", italic("F. sylvatica") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+# 18o
+
+dtS<-subset(x=dt, species=="Fagus"&year=="2016")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d18o_mean ~ tmeanB, data = dtS)
+fit2<-lm(d18o_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = -Inf, label = equation(fit1),
+             parse = TRUE,  vjust = -1, hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = -Inf, label = equation(fit2),
+             parse = TRUE,  vjust =0 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^18,"O, ", italic("F. sylvatica") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+fit1<-lm(d18o_mean ~ tmaxB, data = dtS)
+fit2<-lm(d18o_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = -Inf, y = -Inf, label = equation(fit1),
+             parse = TRUE,  vjust = -1, hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = -Inf, y = -Inf, label = equation(fit2),
+             parse = TRUE,  vjust =0 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^18,"O, ", italic("F. sylvatica") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+# Quercus
+
+dtS<-subset(x=dt, species=="Quercus")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d13c_mean<-rep(dtS[1:(nrow(dtS)),"d13c_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d13c_mean ~ tmeanB, data = dtS)
+fit2<-lm(d13c_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = 5.5, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust="inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = 5.5, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust="inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^13,"C, ", italic("Q. robur") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+
+
+fit1<-lm(d13c_mean ~ tmaxB, data = dtS)
+fit2<-lm(d13c_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = 10, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust="inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = 10, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust="inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^13,"C, ", italic("Q. robur") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+
+# 18 o
+
+
+dtS<-subset(x=dt, species=="Quercus")
+dtTemp<-as.data.frame(t(dtS))
+dtN<-NULL
+dtN$species<-rep(dtS[1,"species"], ((nrow(dtS))*4))
+dtN$site<-rep(dtS[1:(nrow(dtS)),"site"], each=4)
+dtN$year<-rep(dtS[1:(nrow(dtS)),"year"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$d18o_mean<-rep(dtS[1:(nrow(dtS)),"d18o_mean"], each=4)
+dtN$type<-as.factor(rep(c( "tmeanB", "tmeanC",  "tmaxB", "tmaxC"), len=(nrow(dtS))*4))
+dtN$value<-c(dtS[1,"tmeanB"], dtS[1,"tmeanC"],
+             dtS[1,"tmaxB"], dtS[1,"tmaxC"],
+             dtS[2,"tmeanB"], dtS[2,"tmeanC"],
+             dtS[2,"tmaxB"], dtS[2,"tmaxC"],
+             dtS[3,"tmeanB"], dtS[3,"tmeanC"],
+             dtS[3,"tmaxB"], dtS[3,"tmaxC"])
+dtN<-as.data.table(dtN)
+
+fit1<-lm(d18o_mean ~ tmeanB, data = dtS)
+fit2<-lm(d18o_mean ~ tmeanC, data = dtS)
+
+a<-subset(dtN, type==c( "tmeanB", "tmeanC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = 5.5, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust="inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = 5.5, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust="inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, mean temperature vs ",
+                           delta^18,"O, ", italic("Q. robur") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+
+
+
+fit1<-lm(d18o_mean ~ tmaxB, data = dtS)
+fit2<-lm(d18o_mean ~ tmaxC, data = dtS)
+
+a<-subset(dtN, type==c( "tmaxB", "tmaxC"))
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = 9.5, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust="inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = 9.5, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust="inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, maximum temperature vs ",
+                           delta^18,"O, ", italic("Q. robur") )))+
+  scale_x_continuous(breaks= seq(-10,40,1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+# Alnus and Corylus
+
+# comparison to mean of the year before
+# A: August to October
+# B: October to January
+# C: March to October
+# D: March to January
+
+dt2<-subset(dt, species=="Alnus"|species=="Corylus")
+dt2<-dt2[,-c(3:14)]
+
+
+
+weatherDat<-read.delim("weatherData.txt",header=TRUE)
+weatherDat[1:7,1:5]
+weatherDat$monthNr<-c(rep(1:12,48))
+
+ard15mj<-mean(c(
+  subset(weatherDat, site=="ard"&year==2014&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="jan"&type=="tmean")[,"value"]))
+
+ard15mo<-mean(c(
+  subset(weatherDat, site=="ard"&year==2014&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="oct"&type=="tmean")[,"value"]))
+
+ard15oj<-mean(c(
+  subset(weatherDat, site=="ard"&year==2014&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="jan"&type=="tmean")[,"value"]))
+
+ard15ao<-mean(c(
+  subset(weatherDat, site=="ard"&year==2014&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2014&month=="nov"&type=="tmean")[,"value"]))
+
+# ard 2016
+ard16mj<-mean(c(
+  subset(weatherDat, site=="ard"&year==2015&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2016&month=="jan"&type=="tmean")[,"value"]))
+
+ard16mo<-mean(c(
+  subset(weatherDat, site=="ard"&year==2015&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="oct"&type=="tmean")[,"value"]))
+
+ard16oj<-mean(c(
+  subset(weatherDat, site=="ard"&year==2015&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2016&month=="jan"&type=="tmean")[,"value"]))
+
+ard16ao<-mean(c(
+  subset(weatherDat, site=="ard"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ard"&year==2015&month=="oct"&type=="tmean")[,"value"]))
+
+
+# müritz
+
+# mur 2016
+mur16mj<-mean(c(
+  subset(weatherDat, site=="mur"&year==2015&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2016&month=="jan"&type=="tmean")[,"value"]))
+
+mur16mo<-mean(c(
+  subset(weatherDat, site=="mur"&year==2015&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="oct"&type=="tmean")[,"value"]))
+
+mur16oj<-mean(c(
+  subset(weatherDat, site=="mur"&year==2015&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2016&month=="jan"&type=="tmean")[,"value"]))
+
+mur16ao<-mean(c(
+  subset(weatherDat, site=="mur"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="mur"&year==2015&month=="oct"&type=="tmean")[,"value"]))
+
+
+# steigerwald
+
+# ste 2016
+ste16mj<-mean(c(
+  subset(weatherDat, site=="ste"&year==2015&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2016&month=="jan"&type=="tmean")[,"value"]))
+
+ste16mo<-mean(c(
+  subset(weatherDat, site=="ste"&year==2015&month=="mar"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="apr"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="may"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="jun"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="jul"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="oct"&type=="tmean")[,"value"]))
+
+ste16oj<-mean(c(
+  subset(weatherDat, site=="ste"&year==2015&month=="oct"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="nov"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="dec"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2016&month=="jan"&type=="tmean")[,"value"]))
+
+ste16ao<-mean(c(
+  subset(weatherDat, site=="ste"&year==2015&month=="aug"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="sep"&type=="tmean")[,"value"],
+  subset(weatherDat, site=="ste"&year==2015&month=="oct"&type=="tmean")[,"value"]))
+
+dt2$mar_jan<-c(ard15mj, ard15mj, ard16mj, ard16mj, mur16mj, mur16mj, ste16mj, ste16mj)
+dt2$mar_oct<-c(ard15mo, ard15mo, ard16mo, ard16mo, mur16mo, mur16mo, ste16mo, ste16mo)
+dt2$oct_jan<-c(ard15oj, ard15oj, ard16oj, ard16oj, mur16oj, mur16oj, ste16oj, ste16oj)
+dt2$aug_oct<-c(ard15ao, ard15ao, ard16ao, ard16ao, mur16ao, mur16ao, ste16ao, ste16ao)
+
+### Alnus & Corylus 2016
+
+dtS2<-subset(x=dt2, species=="Alnus"&year=="2016")
+dtN2<-NULL
+dtN2$species<-rep(dtS2[1,"species"], ((nrow(dtS2))*2))
+dtN2$site<-rep(dtS2[1:(nrow(dtS2)),"site"], each=2)
+dtN2$year<-rep(dtS2[1:(nrow(dtS2)),"year"], each=2)
+dtN2$d13c_mean<-rep(dtS2[1:(nrow(dtS2)),"d13c_mean"], each=2)
+dtN2$d18o_mean<-rep(dtS2[1:(nrow(dtS2)),"d18o_mean"], each=2)
+dtN2$type<-as.factor(rep(c("aug_oct", "mar_oct"), len=(nrow(dtS2))*2))
+dtN2$value<-c(dtS2[1,"aug_oct"], dtS2[1,"mar_oct"],
+              dtS2[2,"aug_oct"], dtS2[2,"mar_oct"],
+              dtS2[3,"aug_oct"], dtS2[3,"mar_oct"])
+
+dtN2<-as.data.table(dtN2)
+
+fit1<-lm(d13c_mean ~ aug_oct, data = dtS2)
+fit2<-lm(d13c_mean ~ mar_oct, data = dtS2)
+
+
+a<-dtN2
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = 14, y = -Inf, label = equation(fit1),
+             parse = TRUE,  vjust = -1, colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = 14, y = -Inf, label = equation(fit2),
+             parse = TRUE,  vjust = 0, colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, temperature vs ",
+                           delta^13,"C, ", italic("A. glutinosa") )))+
+  scale_x_continuous(breaks= seq(-10,40,0.5))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+
+# 18o
+
+
+fit1<-lm(d18o_mean ~ aug_oct, data = dtS2)
+fit2<-lm(d18o_mean ~ mar_oct, data = dtS2)
+
+
+a<-dtN2
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = Inf, y = -Inf, label = equation(fit1),
+             parse = TRUE,  vjust = -1, hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = Inf, y = -Inf, label = equation(fit2),
+             parse = TRUE,  vjust =0 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, temperature vs ",
+                           delta^18,"O, ", italic("A. glutinosa") )))+
+  scale_x_continuous(breaks= seq(-10,40,0.5))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+
+
+
+
+# Corylus
+dtS2<-subset(x=dt2, species=="Corylus"&year=="2016")
+dtTemp<-as.data.frame(t(dtS2))
+dtN2<-NULL
+dtN2$species<-rep(dtS2[1,"species"], ((nrow(dtS2))*2))
+dtN2$site<-rep(dtS2[1:(nrow(dtS2)),"site"], each=2)
+dtN2$year<-rep(dtS2[1:(nrow(dtS2)),"year"], each=2)
+dtN2$d13c_mean<-rep(dtS2[1:(nrow(dtS2)),"d13c_mean"], each=2)
+dtN2$d18o_mean<-rep(dtS2[1:(nrow(dtS2)),"d18o_mean"], each=2)
+dtN2$type<-as.factor(rep(c("aug_oct", "mar_oct"), len=(nrow(dtS2))*2))
+dtN2$value<-c(dtS2[1,"aug_oct"], dtS2[1,"mar_oct"],
+              dtS2[2,"aug_oct"], dtS2[2,"mar_oct"],
+              dtS2[3,"aug_oct"], dtS2[3,"mar_oct"])
+
+dtN2<-as.data.table(dtN2)
+
+fit1<-lm(d13c_mean ~ aug_oct, data = dtS2)
+fit2<-lm(d13c_mean ~ mar_oct, data = dtS2)
+
+a<-dtN2
+ggplot(a, aes(value, d13c_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = 13.5, y = Inf, label = equation(fit1),
+             parse = TRUE,  vjust = "inward", hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = 13.5, y = Inf, label = equation(fit2),
+             parse = TRUE,  vjust =2 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^13,"C VPDB")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, temperature vs ",
+                           delta^13,"C, ", italic("C. avellana") )))+
+  scale_x_continuous(breaks= seq(-10,40,0.5))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "none")
+
+# 18o
+
+
+fit1<-lm(d18o_mean ~ aug_oct, data = dtS2)
+fit2<-lm(d18o_mean ~ mar_oct, data = dtS2)
+
+a<-dtN2
+ggplot(a, aes(value, d18o_mean))+
+  geom_point(aes(shape=site, colour=type), size=2.5)+
+  geom_smooth(aes(lty=type, colour=type), method = lm, se=FALSE)+
+  scale_fill_brewer(palette="Set1")+
+  scale_colour_brewer(palette="Set1")+theme_bw()+
+  geom_label(x = Inf, y = -Inf, label = equation(fit1),
+             parse = TRUE,  vjust = -1, hjust = "inward", colour=brewer.pal(6, "Set1")[1])+
+  geom_label(x = Inf, y = -Inf, label = equation(fit2),
+             parse = TRUE,  vjust =0 , hjust = "inward", colour=brewer.pal(6, "Set1")[2])+
+  ylab(expression(paste(delta^18,"O VSMOW")))+
+  xlab("Temperature [°C]")+
+  ggtitle(expression(paste("Linear regression model, temperature vs ",
+                           delta^18,"O, ", italic("C. avellana") )))+
+  scale_x_continuous(breaks= seq(-10,40,0.5))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.3, linetype="dashed"),
+        panel.grid.major = element_line(colour="grey", size=0.5))+
+  theme(legend.position = "bottom")
+# SUBSAMPLES ####
+
+#Ordner angeben in dem R alles findet
+setwd("/home/julianhennig/Dokumente/Studium/masterThesis/data")
+#R sagen, welche Tabelle er lesen soll - die Tabelle hei?t in R "ISO"
+iso<-read.table("Masterbook.txt",header=TRUE)
+iso<-subset(iso, chemTreat=="no")
+# Datum in ein Format bringen, welches R versteht #
+iso$date <- strptime(paste(iso$date, "01", sep=""), "%d.%m.%Y")
+iso[1:7,1:7]
+iso$year<-as.factor(iso$year)
+data<-subset(iso, subSample=="yes")
+
+levels(data$subHeight) <- c("High", "Low", "Medium")
+data$subHeight[is.na(data$subHeight)] <- "Medium"
+colnames(data)[10]<-"Orientation"
+
+
+df<-subset(data, id==unique(data$id), select=species)
+
+dat<-subset(iso, subSample=="no")
+
+rangeNo<-function(x){max(x)-min(x)}
+
+eraseOutlier<-function(data, columnName)
+{  c=(subset(data, columnName<=((mean(columnName, na.rm=TRUE))+
+                                  3*(sd(columnName, na.rm=TRUE))) &
+               columnName>=((mean(columnName, na.rm=TRUE))-
+                              3*(sd(columnName, na.rm=TRUE)))));return(c)
+}
+dat<-eraseOutlier(dat, dat$d13c)
+dat<-eraseOutlier(dat, dat$d18o)
+isoT<-as.data.table(dat)
+mn<-isoT[ , lapply(.SD, mean, na.rm=TRUE), by = paste(isoT$species, isoT$site, isoT$year),
+          .SDcols = c("d13c", "d18o")]
+md<-isoT[ , lapply(.SD, median, na.rm=TRUE), by = paste(isoT$species, isoT$site, isoT$year),
+          .SDcols = c("d13c", "d18o")]
+sd<-isoT[ , lapply(.SD, sd, na.rm=TRUE), by = paste(isoT$species, isoT$site, isoT$year),
+          .SDcols = c("d13c", "d18o")]
+
+
+dt<-NULL
+dt$speciesSiteYear<-mn$paste
+dt$d13c_mean<-mn$d13c
+dt$d13c_median<-md$d13c
+dt$d13c_sd<-sd$d13c
+
+dt$d18o_mean<-mn$d18o
+dt$d18o_median<-md$d18o
+dt$d18o_sd<-sd$d18o
+dt<-as.data.table(dt)
+dt<-na.omit(dt)
+write.table(dt, "meanMedSdSpeciesSiteYear_R-OUTPUT.txt", sep="\t")
+# adjust the table using excel -> insert name, year etc
+dt2<-read.table("meanMedSdSpeciesSiteYear.txt", header=TRUE, sep="\t")
+data$heightDirect<- paste(data$subDirection, data$subHeight)
+
+ggplot(data, aes(year, d13c))+geom_boxplot(aes(fill=id))+
+  facet_grid(site~species)+
+  theme_bw()+
+  ylab(expression(paste(delta^13,"C vs VPDB")))+
+  ggtitle(expression(paste("Boxplot ", delta^13,"C vs VPDB, subsample overview")))
+
+ggplot(data, aes(year, d18o))+geom_boxplot(aes(fill=id))+
+  facet_grid(site~species)+
+  theme_bw()+
+  ylab(expression(paste(delta^18,"O vs VSMOW")))+
+  ggtitle(expression(paste("Boxplot ", delta^18,"O vs VSMOW, subsample overview")))
+
+
+#acer ste 2016
+
+range(acer16ste$d13c)
+rangeNo(acer16ste$d13c)
+range(acer16SteNoSub$d13c)
+rangeNo(acer16SteNoSub$d13c)
+
+range(acer16ste$d18o)
+rangeNo(acer16ste$d18o)
+range(acer16SteNoSub$d18o)
+rangeNo(acer16SteNoSub$d18o)
+
+acer16ste<-subset(data, species=="Acer" & year==2016 & site=="STE")
+acer16steMn<-dt[dt$speciesSiteYear=="Acer STE 2016","d13c_mean"]
+acer16steSdP<-dt[dt$speciesSiteYear=="Acer STE 2016","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Acer STE 2016","d13c_sd"]
+acer16steSdM<-dt[dt$speciesSiteYear=="Acer STE 2016","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Acer STE 2016","d13c_sd"]
+acer16ste2SdP<-dt[dt$speciesSiteYear=="Acer STE 2016","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Acer STE 2016","d13c_sd"])
+acer16ste2SdM<-dt[dt$speciesSiteYear=="Acer STE 2016","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Acer STE 2016","d13c_sd"])
+acer16SteNoSub<-subset(dat, species=="Acer" & year==2016 & site=="STE")
+levels(acer16SteNoSub$subHeight) <- c("High", "Low", "Reference")
+acer16SteNoSub$subHeight[is.na(acer16SteNoSub$subHeight)] <- "Reference"
+
+ggplot(acer16ste, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=acer16SteNoSub, colour="lightgrey")+
+  geom_vline(xintercept = acer16steMn$d13c_mean, colour="black", size=1.5)+
+  geom_vline(xintercept = acer16steSdP$d13c_mean, colour="black", linetype="dashed")+
+  geom_vline(xintercept = acer16steSdM$d13c_mean, colour="black", linetype="dashed")+
+  geom_vline(xintercept = acer16ste2SdP$d13c_mean, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = acer16ste2SdM$d13c_mean, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Acer samples from Steigerwald, 2016")
+
+
+
+
+
+
+acer16ste<-subset(data, species=="Acer" & year==2016 & site=="STE")
+acer16steMn<-dt[dt$speciesSiteYear=="Acer STE 2016",]$d18o_mean
+acer16steSdP<-dt[dt$speciesSiteYear=="Acer STE 2016","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Acer STE 2016","d18o_sd"]
+acer16steSdM<-dt[dt$speciesSiteYear=="Acer STE 2016","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Acer STE 2016","d18o_sd"]
+acer16ste2SdP<-dt[dt$speciesSiteYear=="Acer STE 2016","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Acer STE 2016","d18o_sd"])
+acer16ste2SdM<-dt[dt$speciesSiteYear=="Acer STE 2016","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Acer STE 2016","d18o_sd"])
+acer16SteNoSub<-subset(dat, species=="Acer" & year==2016 & site=="STE")
+levels(acer16SteNoSub$subHeight) <- c("High", "Low", "Reference")
+acer16SteNoSub$subHeight[is.na(acer16SteNoSub$subHeight)] <- "Reference"
+
+ggplot(acer16ste, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=acer16SteNoSub, colour="lightgrey")+
+  geom_vline(aes(xintercept = acer16steMn), colour="black", size=1.5)+
+  geom_vline(xintercept = acer16steSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = acer16steSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = acer16ste2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = acer16ste2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^18,"C vs VSMOW")))+
+  labs(title=(expression(paste("Barplot ", delta^18,"O vs VSMOW compared to Mean"))), subtitle=
+         "Acer samples from Steigerwald, 2016")
+
+
+
+
+
+
+
+#Alnus 2015 ARD
+
+range(alnus15ard$d13c)
+rangeNo(alnus15ard$d13c)
+range(alnus15ArdNoSub$d13c)
+rangeNo(alnus15ArdNoSub$d13c)
+
+range(alnus15ard$d18o)
+rangeNo(alnus15ard$d18o)
+range(alnus15ArdNoSub$d18o)
+rangeNo(alnus15ArdNoSub$d18o)
+
+alnus15ard<-subset(data, species=="Alnus" & year==2015 & site=="ARD")
+alnus15ardMn<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_mean"]
+alnus15ardSdP<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_sd"]
+alnus15ardSdM<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_sd"]
+alnus15ard2SdP<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_sd"])
+alnus15ard2SdM<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2015","d13c_sd"])
+alnus15ArdNoSub<-subset(dat, species=="Alnus" & year==2015 & site=="ARD")
+levels(alnus15ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+alnus15ArdNoSub$subHeight[is.na(alnus15ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(alnus15ard, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=alnus15ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = alnus15ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = alnus15ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus15ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus15ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = alnus15ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste ("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Alnus samples from Ardennen, 2015")
+
+
+
+
+
+
+alnus15ard<-subset(data, species=="Alnus" & year==2015 & site=="ARD")
+alnus15ardMn<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_mean"]
+alnus15ardSdP<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_sd"]
+alnus15ardSdM<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_sd"]
+alnus15ard2SdP<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_sd"])
+alnus15ard2SdM<-dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2015","d18o_sd"])
+alnus15ArdNoSub<-subset(dat, species=="Alnus" & year==2015 & site=="ARD")
+levels(alnus15ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+alnus15ArdNoSub$subHeight[is.na(alnus15ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(alnus15ard, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=alnus15ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = alnus15ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = alnus15ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus15ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus15ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = alnus15ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^18,"O vs VSMOW")))+
+  labs(title=(expression(paste ("Barplot ", delta^18,"O vs VSMOW compared to Mean"))), subtitle=
+         "Alnus samples from Ardennen, 2015")
+
+
+
+
+
+
+
+#Alnus 2016 ARD
+
+range(alnus16ard$d13c)
+rangeNo(alnus16ard$d13c)
+range(alnus16ArdNoSub$d13c)
+rangeNo(alnus16ArdNoSub$d13c)
+
+range(alnus16ard$d18o)
+rangeNo(alnus16ard$d18o)
+range(alnus16ArdNoSub$d18o)
+rangeNo(alnus16ArdNoSub$d18o)
+
+alnus16ard<-subset(data, species=="Alnus" & year==2016 & site=="ARD")
+alnus16ardMn<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_mean"]
+alnus16ardSdP<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_sd"]
+alnus16ardSdM<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_sd"]
+alnus16ard2SdP<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_sd"])
+alnus16ard2SdM<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2016","d13c_sd"])
+alnus16ArdNoSub<-subset(dat, species=="Alnus" & year==2016 & site=="ARD")
+levels(alnus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+alnus16ArdNoSub$subHeight[is.na(alnus16ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(alnus16ard, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=alnus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = alnus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = alnus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = alnus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste ("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Alnus samples from Ardennen, 2016")
+
+
+
+
+alnus16ard<-subset(data, species=="Alnus" & year==2016 & site=="ARD")
+alnus16ardMn<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_mean"]
+alnus16ardSdP<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_sd"]
+alnus16ardSdM<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_sd"]
+alnus16ard2SdP<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_sd"])
+alnus16ard2SdM<-dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Alnus ARD 2016","d18o_sd"])
+alnus16ArdNoSub<-subset(dat, species=="Alnus" & year==2016 & site=="ARD")
+levels(alnus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+alnus16ArdNoSub$subHeight[is.na(alnus16ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(alnus16ard, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=alnus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = alnus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = alnus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = alnus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = alnus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^18,"O vs VSMOW")))+
+  labs(title=(expression(paste ("Barplot ", delta^18,"C vs VSMOW compared to Mean"))), subtitle=
+         "Alnus samples from Ardennen, 2016")
+
+
+
+
+
+# Betula 2016 MUR
+
+range(betula16mur$d13c)
+rangeNo(betula16mur$d13c)
+range(betula16MurNoSub$d13c)
+rangeNo(betula16MurNoSub$d13c)
+
+range(betula16mur$d18o)
+rangeNo(betula16mur$d18o)
+range(betula16MurNoSub$d18o)
+rangeNo(betula16MurNoSub$d18o)
+
+betula16mur<-subset(data, species=="Betula" & year==2016 & site=="MUR")
+betula16murMn<-dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_mean"]
+betula16murSdP<-dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_sd"]
+betula16murSdM<-dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_sd"]
+betula16mur2SdP<-dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_sd"])
+betula16mur2SdM<-dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Betula MUR 2016","d13c_sd"])
+betula16MurNoSub<-subset(dat, species=="Betula" & year==2016 & site=="MUR")
+levels(betula16MurNoSub$subHeight) <- c("High", "Low", "Reference")
+betula16MurNoSub$subHeight[is.na(betula16MurNoSub$subHeight)] <- "Reference"
+
+ggplot(betula16mur, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=betula16MurNoSub, colour="lightgrey")+
+  geom_vline(xintercept = betula16murMn, colour="black", size=1.5)+
+  geom_vline(xintercept = betula16murSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = betula16murSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = betula16mur2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = betula16mur2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("NE", "N", "S", "SW"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste ("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Betula samples from Müritz, 2016")
+
+
+
+betula16mur<-subset(data, species=="Betula" & year==2016 & site=="MUR")
+betula16murMn<-dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_mean"]
+betula16murSdP<-dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_sd"]
+betula16murSdM<-dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_sd"]
+betula16mur2SdP<-dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_sd"])
+betula16mur2SdM<-dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Betula MUR 2016","d18o_sd"])
+betula16MurNoSub<-subset(dat, species=="Betula" & year==2016 & site=="MUR")
+levels(betula16MurNoSub$subHeight) <- c("High", "Low", "Reference")
+betula16MurNoSub$subHeight[is.na(betula16MurNoSub$subHeight)] <- "Reference"
+
+ggplot(betula16mur, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=betula16MurNoSub, colour="lightgrey")+
+  geom_vline(xintercept = betula16murMn, colour="black", size=1.5)+
+  geom_vline(xintercept = betula16murSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = betula16murSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = betula16mur2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = betula16mur2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("NE", "N", "S", "SW"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^18,"O vs VSMOW")))+
+  labs(title=(expression(paste ("Barplot ", delta^18,"O vs VSMOW compared to Mean"))), subtitle=
+         "Betula samples from Müritz, 2016")
+
+
+
+
+
+#Corylus ARD 2015
+
+range(corylus15ard$d13c)
+rangeNo(corylus15ard$d13c)
+range(corylus15ArdNoSub$d13c)
+rangeNo(corylus15ArdNoSub$d13c)
+
+range(corylus15ard$d18o)
+rangeNo(corylus15ard$d18o)
+range(corylus15ArdNoSub$d18o)
+rangeNo(corylus15ArdNoSub$d18o)
+
+corylus15ard<-subset(data, species=="Corylus" & year==2015 & site=="ARD")
+corylus15ardMn<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_mean"]
+corylus15ardSdP<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_sd"]
+corylus15ardSdM<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_sd"]
+corylus15ard2SdP<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_sd"])
+corylus15ard2SdM<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2015","d13c_sd"])
+corylus15ArdNoSub<-subset(dat, species=="Corylus" & year==2015 & site=="ARD")
+levels(corylus15ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+corylus15ArdNoSub$subHeight[is.na(corylus15ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(corylus15ard, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=corylus15ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = corylus15ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = corylus15ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus15ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus15ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = corylus15ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste ("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Corylus samples from Ardennen, 2015")
+
+
+
+
+
+corylus15ard<-subset(data, species=="Corylus" & year==2015 & site=="ARD")
+corylus15ardMn<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_mean"]
+corylus15ardSdP<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_sd"]
+corylus15ardSdM<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_sd"]
+corylus15ard2SdP<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_sd"])
+corylus15ard2SdM<-dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2015","d18o_sd"])
+corylus15ArdNoSub<-subset(dat, species=="Corylus" & year==2015 & site=="ARD")
+levels(corylus15ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+corylus15ArdNoSub$subHeight[is.na(corylus15ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(corylus15ard, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=corylus15ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = corylus15ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = corylus15ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus15ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus15ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = corylus15ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^18,"O vs VSMOW")))+
+  labs(title=(expression(paste ("Barplot ", delta^18,"O vs VSMOW compared to Mean"))), subtitle=
+         "Corylus samples from Ardennen, 2015")
+
+
+
+
+
+#Corylus ARD 2016
+
+range(corylus16ard$d13c, na.rm = TRUE)
+max(corylus16ard$d13c,na.rm = TRUE)-
+  min(corylus16ard$d13c, na.rm = TRUE)
+range(corylus16ArdNoSub$d13c, na.rm = TRUE)
+max(corylus16ArdNoSub$d13c,na.rm = TRUE)-
+  min(corylus16ArdNoSub$d13c, na.rm = TRUE)
+
+range(corylus16ard$d18o, na.rm = TRUE)
+max(corylus16ard$d18o,na.rm = TRUE)-
+  min(corylus16ard$d18o, na.rm = TRUE)
+range(corylus16ArdNoSub$d18o, na.rm = TRUE)
+max(corylus16ArdNoSub$d18o,na.rm = TRUE)-
+  min(corylus16ArdNoSub$d18o, na.rm = TRUE)
+
+corylus16ard<-subset(data, species=="Corylus" & year==2016 & site=="ARD")
+corylus16ardMn<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_mean"]
+corylus16ardSdP<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_sd"]
+corylus16ardSdM<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_sd"]
+corylus16ard2SdP<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_sd"])
+corylus16ard2SdM<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2016","d13c_sd"])
+corylus16ArdNoSub<-subset(dat, species=="Corylus" & year==2016 & site=="ARD")
+levels(corylus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+corylus16ArdNoSub$subHeight[is.na(corylus16ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(corylus16ard, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=corylus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = corylus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = corylus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = corylus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste ("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Corylus samples from Ardennen, 2016")
+
+
+
+
+
+corylus16ard<-subset(data, species=="Corylus" & year==2016 & site=="ARD")
+corylus16ardMn<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_mean"]
+corylus16ardSdP<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_sd"]
+corylus16ardSdM<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_sd"]
+corylus16ard2SdP<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_sd"])
+corylus16ard2SdM<-dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Corylus ARD 2016","d18o_sd"])
+corylus16ArdNoSub<-subset(dat, species=="Corylus" & year==2016 & site=="ARD")
+levels(corylus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+corylus16ArdNoSub$subHeight[is.na(corylus16ArdNoSub$subHeight)] <- "Reference"
+
+ggplot(corylus16ard, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=corylus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = corylus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = corylus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = corylus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = corylus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^18,"O vs VSMOW")))+
+  labs(title=(expression(paste ("Barplot ", delta^18,"O vs VSMOW compared to Mean"))), subtitle=
+         "Corylus samples from Ardennen, 2016")
+
+
+
+
+
+
+# Fagus 2016 ARD
+
+range(fagus16ard$d13c)
+rangeNo(fagus16ard$d13c)
+range(fagus16ArdNoSub$d13c)
+rangeNo(fagus16ArdNoSub$d13c)
+
+range(fagus16ard$d18o)
+rangeNo(fagus16ard$d18o)
+range(fagus16ArdNoSub$d18o)
+rangeNo(fagus16ArdNoSub$d18o)
+
+fagus16ard<-subset(data, species=="Fagus" & year==2016 & site=="ARD")
+fagus16ardMn<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_mean"]
+fagus16ardSdP<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_sd"]
+fagus16ardSdM<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_sd"]
+fagus16ard2SdP<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_sd"])
+fagus16ard2SdM<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Fagus ARD 2016","d13c_sd"])
+fagus16ArdNoSub<-subset(dat, species=="Fagus" & year==2016 & site=="ARD")
+levels(fagus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+fagus16ArdNoSub$subHeight[is.na(fagus16ArdNoSub$subHeight)] <- "Reference"
+
+levels(fagus16ard$Orientation)<-c("E","N","NE","S","SW","W", "Not available")
+fagus16ard$Orientation[is.na(fagus16ard$Orientation)] <- "Not available"
+
+ggplot(fagus16ard, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=fagus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = fagus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = fagus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = fagus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = fagus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = fagus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W", "Not available"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02",
+                                                      "dark grey"))+theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste ("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Fagus samples from Ardennen, 2016")
+
+
+
+
+
+fagus16ard<-subset(data, species=="Fagus" & year==2016 & site=="ARD")
+fagus16ardMn<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_mean"]
+fagus16ardSdP<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_sd"]
+fagus16ardSdM<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_sd"]
+fagus16ard2SdP<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_sd"])
+fagus16ard2SdM<-dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Fagus ARD 2016","d18o_sd"])
+fagus16ArdNoSub<-subset(dat, species=="Fagus" & year==2016 & site=="ARD")
+levels(fagus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+fagus16ArdNoSub$subHeight[is.na(fagus16ArdNoSub$subHeight)] <- "Reference"
+
+levels(fagus16ard$Orientation)<-c("E","N","NE","S","SW","W", "Not available")
+fagus16ard$Orientation[is.na(fagus16ard$Orientation)] <- "Not available"
+
+ggplot(fagus16ard, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=fagus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = fagus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = fagus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = fagus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = fagus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = fagus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W", "Not available"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02",
+                                                      "dark grey"))+theme_bw()+
+  xlab(expression(paste(delta^18,"O vs VSMOW")))+
+  labs(title=(expression(paste ("Barplot ", delta^18,"O vs VSMOW compared to Mean"))), subtitle=
+         "Fagus samples from Ardennen, 2016")
+
+
+
+
+
+#Quercus 2016 ARD
+
+range(quercus16ard$d13c)
+rangeNo(quercus16ard$d13c)
+range(quercus16ArdNoSub$d13c)
+rangeNo(quercus16ArdNoSub$d13c)
+
+range(quercus16ard$d18o)
+rangeNo(quercus16ard$d18o)
+range(quercus16ArdNoSub$d18o)
+rangeNo(quercus16ArdNoSub$d18o)
+
+quercus16ard<-subset(data, species=="Quercus" & year==2016 & site=="ARD")
+quercus16ardMn<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_mean"]
+quercus16ardSdP<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_mean"]+
+  dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_sd"]
+quercus16ardSdM<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_mean"]-
+  dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_sd"]
+quercus16ard2SdP<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_mean"]+
+  2*(dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_sd"])
+quercus16ard2SdM<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_mean"]-
+  2*(dt[dt$speciesSiteYear=="Quercus ARD 2016","d13c_sd"])
+quercus16ArdNoSub<-subset(dat, species=="Quercus" & year==2016 & site=="ARD")
+levels(quercus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+quercus16ArdNoSub$subHeight[is.na(quercus16ArdNoSub$subHeight)] <- "Reference"
+
+levels(quercus16ard$Orientation)<-c("E","N","NE","S","SW","W", "Not available")
+quercus16ard$Orientation[is.na(quercus16ard$Orientation)] <- "Not available"
+
+ggplot(quercus16ard, aes(d13c))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=quercus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = quercus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = quercus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = quercus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = quercus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = quercus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W", "Not available"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^13,"C vs VPDB")))+
+  labs(title=(expression(paste ("Barplot ", delta^13,"C vs VPDB compared to Mean"))), subtitle=
+         "Quercus samples from Ardennen, 2016")
+
+
+
+
+
+
+quercus16ard<-subset(data, species=="Quercus" & year==2016 & site=="ARD")
+quercus16ardMn<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_mean"]
+quercus16ardSdP<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_mean"]+
+  dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_sd"]
+quercus16ardSdM<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_mean"]-
+  dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_sd"]
+quercus16ard2SdP<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_mean"]+
+  2*(dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_sd"])
+quercus16ard2SdM<-dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_mean"]-
+  2*(dt[dt$speciesSiteYear=="Quercus ARD 2016","d18o_sd"])
+quercus16ArdNoSub<-subset(dat, species=="Quercus" & year==2016 & site=="ARD")
+levels(quercus16ArdNoSub$subHeight) <- c("High", "Low", "Reference")
+quercus16ArdNoSub$subHeight[is.na(quercus16ArdNoSub$subHeight)] <- "Reference"
+
+levels(quercus16ard$Orientation)<-c("E","N","NE","S","SW","W", "Not available")
+quercus16ard$Orientation[is.na(quercus16ard$Orientation)] <- "Not available"
+
+ggplot(quercus16ard, aes(d18o))+geom_histogram(aes(fill=Orientation), colour="black")+
+  geom_histogram(data=quercus16ArdNoSub, colour="lightgrey")+
+  geom_vline(xintercept = quercus16ardMn, colour="black", size=1.5)+
+  geom_vline(xintercept = quercus16ardSdP, colour="black", linetype="dashed")+
+  geom_vline(xintercept = quercus16ardSdM, colour="black", linetype="dashed")+
+  geom_vline(xintercept = quercus16ard2SdP, colour="red", linetype="dashed", size=0.2)+
+  geom_vline(xintercept = quercus16ard2SdM, colour="red", linetype="dashed", size=0.2)+
+  facet_grid(subHeight~.)+ scale_fill_manual(breaks = c("E", "N", "S", "W", "Not available"),
+                                             values=c("#ffee19", "#2764f0", "#35d805", "#ee1e02"))+
+  theme_bw()+
+  xlab(expression(paste(delta^18,"O vs VSMOW")))+
+  labs(title=(expression(paste ("Barplot ", delta^18,"O vs VSMOW compared to Mean"))), subtitle=
+         "Quercus samples from Ardennen, 2016")
+
+
+
+
+
+
+
+# CHEMICAL TREATMENT ####
+#Ordner angeben in dem R alles findet
+setwd("/home/julianhennig/Dokumente/Studium/masterThesis/data")
+#R sagen, welche Tabelle er lesen soll - die Tabelle hei?t in R "ISO"
+iso<-read.table("Masterbook.txt",header=TRUE)
+# Datum in ein Format bringen, welches R versteht #
+
+iso$date <- strptime(paste(iso$date, "01", sep=""), "%d.%m.%Y")
+iso<-iso[!is.na(iso$id),]
+iso$year<-as.factor(iso$year)
+iso[1:7,1:7]
+
+
+# to figure out all names of samples with chemTreat select data using subset and then 
+# remove all duplicates
+data<-subset(iso, chemTreat=="yes" , select=c("id","species", "chemTreat"))
+data<-data[!duplicated(data),]
+data$id
+# id of samples with chemTreat #
+
+# ARD4_Bet5      ARD4_Bet12     ARD4_Bet15     ARD4_Fagus5    ARD4_Fagus7    ARD4_Fagus8    ARD4_Quercus13 ARD4_Quercus15
+# ARD4_Quercus6  Ste1_Carp7     Ste1_Carp1     Ste1_Carp6     ARD3_Hazel18   ARD3_Alder20   ARD3_Hazel4    ARD3_Hazel6   
+# ARD3_Alder11   ARD3_Alder15  
+
+# create chemData #
+# now create a data table to work with
+chemData<-subset(iso, id=="ARD4_Bet5"| id=="ARD4_Bet12"| id=="ARD4_Bet15"| id=="ARD4_Fagus5"| 
+                   id=="ARD4_Fagus7"| id=="ARD4_Fagus8"|id=="ARD4_Quercus13"| id=="ARD4_Quercus15"| 
+                   id=="ARD4_Quercus6"| id=="Ste1_Carp7"| id=="Ste1_Carp1"| id=="Ste1_Carp6"|
+                   id=="ARD3_Hazel18"| id=="ARD3_Alder20"| id=="ARD3_Hazel4"| id=="ARD3_Hazel6"|
+                   id=="ARD3_Alder11"| id=="ARD3_Alder15", select = c("chemTreat", "id", "d13c","d18o",
+                                                                      "date", "year", "site", "species", "chemical"))
+levels(chemData$chemical)
+levels(chemData$chemical)<-c("all", "h2so4", "hf", "koh", "naclo", "raw")
+chemData$chemical[is.na(chemData$chemical)] <- "raw"
+chemData[1:7, 1:9]
+## select only the rows in which 
+## the combination of "id" and "chemical" is unique ##
+
+devData<-chemData[!duplicated(chemData[,c("chemical", "id")]),]
+devData<-subset(devData, select = c("chemTreat", "id", "date", "year",
+                                    "site", "species", "chemical"))
+
+
+chemDataT<-as.data.table(chemData)
+mn<-chemDataT[ , lapply(.SD, mean, na.rm=TRUE), by = paste(chemDataT$id, chemDataT$chemical),
+               .SDcols = c("d13c", "d18o")]
+md<-chemDataT[ , lapply(.SD, median, na.rm=TRUE), by = paste(chemDataT$id, chemDataT$chemical),
+               .SDcols = c("d13c", "d18o")]
+sd<-chemDataT[ , lapply(.SD, sd, na.rm=TRUE), by = paste(chemDataT$id, chemDataT$chemical),
+               .SDcols = c("d13c", "d18o")]
+
+
+dt<-NULL
+dt$idChemical<-mn$paste
+dt$d13c_mean<-mn$d13c
+dt$d13c_median<-md$d13c
+dt$d13c_sd<-sd$d13c
+
+dt$d18o_mean<-mn$d18o
+dt$d18o_median<-md$d18o
+dt$d18o_sd<-sd$d18o
+dt<-as.data.table(dt)
+
+devData$idChemical<-dt$idChemical
+
+devData$d13cmean<-dt$d13c_mean
+devData$d18omean<-dt$d18o_mean
+# calculate the actual deviation between the chemicals and the raw samples
+d13cdev<-c(
+  #ARD4_Bet5, no 
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d13cmean),
+  #ARD4_Fagus5, no  
+  ((subset(devData, id=="ARD4_Fagus5"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus5"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Fagus5"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus5"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Fagus5"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus5"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD4_Fagus7"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus7"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Fagus7"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus7"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Fagus7"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus7"&chemical=="raw"))$d13cmean),
+  #ARD4_Fagus8  
+  ((subset(devData, id=="ARD4_Fagus8"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus8"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Fagus8"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus8"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Fagus8"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Fagus8"&chemical=="raw"))$d13cmean),
+  #ARD4_Quercus13 
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d13cmean),
+  #ARD4_Quercus6 
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d13cmean),
+  #Ste1_Carp7 
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d13cmean),
+  #Ste1_Carp1 
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d13cmean),
+  #Ste1_Carp6 
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="hf"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="hf"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="hf"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="all"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d13cmean),
+  
+  ((subset(devData, id=="ARD3_Alder15"&chemical=="koh"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder15"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder15"&chemical=="h2so4"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder15"&chemical=="raw"))$d13cmean),
+  ((subset(devData, id=="ARD3_Alder15"&chemical=="naclo"))$d13cmean-
+     (subset(devData, id=="ARD3_Alder15"&chemical=="raw"))$d13cmean))
+
+
+
+
+
+
+d18odev<-c(
+  #ARD4_Bet5, no 
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet5"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Bet5"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet12"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Bet12"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Bet15"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Bet15"&chemical=="raw"))$d18omean),
+  #ARD4_Fagus5, no  
+  ((subset(devData, id=="ARD4_Fagus5"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus5"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Fagus5"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus5"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Fagus5"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus5"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD4_Fagus7"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus7"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Fagus7"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus7"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Fagus7"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus7"&chemical=="raw"))$d18omean),
+  #ARD4_Fagus8  
+  ((subset(devData, id=="ARD4_Fagus8"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus8"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Fagus8"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus8"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Fagus8"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Fagus8"&chemical=="raw"))$d18omean),
+  #ARD4_Quercus13 
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Quercus13"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus13"&chemical=="raw"))$d18omean),
+  #ARD4_Quercus6 
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD4_Quercus6"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD4_Quercus6"&chemical=="raw"))$d18omean),
+  #Ste1_Carp7 
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp7"&chemical=="all"))$d18omean-
+     (subset(devData, id=="Ste1_Carp7"&chemical=="raw"))$d18omean),
+  #Ste1_Carp1 
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp1"&chemical=="all"))$d18omean-
+     (subset(devData, id=="Ste1_Carp1"&chemical=="raw"))$d18omean),
+  #Ste1_Carp6 
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="Ste1_Carp6"&chemical=="all"))$d18omean-
+     (subset(devData, id=="Ste1_Carp6"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="hf"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel18"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel18"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder20"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD3_Alder20"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="hf"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel4"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel4"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="hf"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Hazel6"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD3_Hazel6"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder11"&chemical=="all"))$d18omean-
+     (subset(devData, id=="ARD3_Alder11"&chemical=="raw"))$d18omean),
+  
+  ((subset(devData, id=="ARD3_Alder15"&chemical=="koh"))$d18omean-
+     (subset(devData, id=="ARD3_Alder15"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder15"&chemical=="h2so4"))$d18omean-
+     (subset(devData, id=="ARD3_Alder15"&chemical=="raw"))$d18omean),
+  ((subset(devData, id=="ARD3_Alder15"&chemical=="naclo"))$d18omean-
+     (subset(devData, id=="ARD3_Alder15"&chemical=="raw"))$d18omean))
+
+
+
+
+devData<-subset(devData, chemical!="raw"& id!="ARD4_Quercus15")
+devData$d13cdev<-d13cdev
+devData$d18odev<-d18odev
+
+devDataT<-as.data.table(devData)
+mn2<-devDataT[ , lapply(.SD, mean, na.rm=TRUE), by = devDataT$chemical,
+               .SDcols = c("d13cdev", "d18odev")]
+sd2<-devDataT[ , lapply(.SD, sd, na.rm=TRUE), by = devDataT$chemical,
+               .SDcols = c("d13cdev", "d18odev")]
+
+
+dt2<-NULL
+dt2$chemical<-mn2$devDataT
+dt2$d13cdev_mean<-mn2$d13cdev
+dt2$d13cdev_sd<-sd2$d13cdev
+
+dt2$d18odev_mean<-mn2$d18odev
+dt2$d18odev_sd<-sd2$d18odev
+dt2<-as.data.table(dt2)
+oldLevels<-levels(devData$species)
+levels(devData$species)<-c("italic('Acer pseudoplatanos')", "italic('Alnus glutinosa')", "italic('Betula pendula')",
+                           "italic('Carpinus betulus')",  "italic('Corylus avellana')",  "italic('Fagus sylvatica')",
+                           "italic('Quercus robur')")
+ggplot(devData, aes(chemical, d13cdev))+
+  geom_boxplot(aes(fill=chemical))+
+  facet_grid(.~species, labeller= label_parsed)+
+  geom_hline(yintercept = 0, size=0.7)+
+  # all mean
+  geom_hline(yintercept=(subset(dt2, chemical=="all"))$d13cdev_mean, size=0.5, colour="orange")+
+  geom_hline(yintercept=((subset(dt2, chemical=="all"))$d13cdev_mean)+(subset(dt2, chemical=="all"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="orange")+
+  geom_hline(yintercept=((subset(dt2, chemical=="all"))$d13cdev_mean)-(subset(dt2, chemical=="all"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="orange")+
+  # all h2so4
+  geom_hline(yintercept=(subset(dt2, chemical=="h2so4"))$d13cdev_mean,
+             size=0.5, colour="red")+
+  geom_hline(yintercept=((subset(dt2, chemical=="h2so4"))$d13cdev_mean)+(subset(dt2, chemical=="h2so4"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="red")+
+  geom_hline(yintercept=((subset(dt2, chemical=="h2so4"))$d13cdev_mean)-(subset(dt2, chemical=="h2so4"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="red")+
+  # all hf
+  geom_hline(yintercept=(subset(dt2, chemical=="hf"))$d13cdev_mean,
+             size=0.5, colour="turquoise")+
+  geom_hline(yintercept=((subset(dt2, chemical=="hf"))$d13cdev_mean)+(subset(dt2, chemical=="hf"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="turquoise")+
+  geom_hline(yintercept=((subset(dt2, chemical=="hf"))$d13cdev_mean)-(subset(dt2, chemical=="hf"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="turquoise")+
+  # all koh
+  geom_hline(yintercept=(subset(dt2, chemical=="koh"))$d13cdev_mean,
+             size=0.5, colour="blue")+
+  geom_hline(yintercept=((subset(dt2, chemical=="koh"))$d13cdev_mean)+(subset(dt2, chemical=="koh"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="blue")+
+  geom_hline(yintercept=((subset(dt2, chemical=="koh"))$d13cdev_mean)-(subset(dt2, chemical=="koh"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="blue")+
+  # all naclo
+  geom_hline(yintercept=(subset(dt2, chemical=="naclo"))$d13cdev_mean,
+             size=0.5, colour="darkgreen")+
+  geom_hline(yintercept=((subset(dt2, chemical=="naclo"))$d13cdev_mean)+(subset(dt2, chemical=="naclo"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="darkgreen")+
+  geom_hline(yintercept=((subset(dt2, chemical=="naclo"))$d13cdev_mean)-(subset(dt2, chemical=="naclo"))$d13cdev_sd,
+             size=0.3, linetype="dashed", colour="darkgreen")+
+  ggtitle("Deviation of d13C values after chemical Treatment")+
+  scale_fill_manual(values = c("orange", "red", "turquoise", "blue", "darkgreen"),
+                    labels = c("Full procedure", expression(paste("H"[2],"SO"[4]), "HF", "KOH", "NaClO")))+
+  scale_x_discrete(limits=c("koh", "h2so4", "hf", "naclo", "all"))+
+  ylab(expression(paste(delta^13,"C difference between treated and untreated sample ")))+
+  xlab("Chemical used")+
+  ggtitle(expression(paste("Boxplot ", delta^13,"C vs VSMOW deviation due to chemical treatment")))+
+  theme_bw()
+
+
+
+ggplot(devData, aes(chemical, d18odev))+
+  geom_boxplot(aes(fill=chemical))+
+  facet_grid(.~species, labeller= label_parsed)+
+  geom_hline(yintercept = 0, size=0.7)+
+  # all mean
+  geom_hline(yintercept=(subset(dt2, chemical=="all"))$d18odev_mean, size=0.5, colour="orange")+
+  geom_hline(yintercept=((subset(dt2, chemical=="all"))$d18odev_mean)+(subset(dt2, chemical=="all"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="orange")+
+  geom_hline(yintercept=((subset(dt2, chemical=="all"))$d18odev_mean)-(subset(dt2, chemical=="all"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="orange")+
+  # all h2so4
+  geom_hline(yintercept=(subset(dt2, chemical=="h2so4"))$d18odev_mean,
+             size=0.5, colour="red")+
+  geom_hline(yintercept=((subset(dt2, chemical=="h2so4"))$d18odev_mean)+(subset(dt2, chemical=="h2so4"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="red")+
+  geom_hline(yintercept=((subset(dt2, chemical=="h2so4"))$d18odev_mean)-(subset(dt2, chemical=="h2so4"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="red")+
+  # all hf
+  geom_hline(yintercept=(subset(dt2, chemical=="hf"))$d18odev_mean,
+             size=0.5, colour="turquoise")+
+  geom_hline(yintercept=((subset(dt2, chemical=="hf"))$d18odev_mean)+(subset(dt2, chemical=="hf"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="turquoise")+
+  geom_hline(yintercept=((subset(dt2, chemical=="hf"))$d18odev_mean)-(subset(dt2, chemical=="hf"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="turquoise")+
+  # all koh
+  geom_hline(yintercept=(subset(dt2, chemical=="koh"))$d18odev_mean,
+             size=0.5, colour="blue")+
+  geom_hline(yintercept=((subset(dt2, chemical=="koh"))$d18odev_mean)+(subset(dt2, chemical=="koh"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="blue")+
+  geom_hline(yintercept=((subset(dt2, chemical=="koh"))$d18odev_mean)-(subset(dt2, chemical=="koh"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="blue")+
+  # all naclo
+  geom_hline(yintercept=(subset(dt2, chemical=="naclo"))$d18odev_mean,
+             size=0.5, colour="darkgreen")+
+  geom_hline(yintercept=((subset(dt2, chemical=="naclo"))$d18odev_mean)+(subset(dt2, chemical=="naclo"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="darkgreen")+
+  geom_hline(yintercept=((subset(dt2, chemical=="naclo"))$d18odev_mean)-(subset(dt2, chemical=="naclo"))$d18odev_sd,
+             size=0.3, linetype="dashed", colour="darkgreen")+
+  ggtitle("Deviation of d18o values after chemical Treatment")+
+  scale_fill_manual(values = c("orange", "red", "turquoise", "blue", "darkgreen"),
+                    labels = c("Full procedure", expression(paste("H"[2],"SO"[4]), "HF", "KOH", "NaClO")))+
+  scale_x_discrete(limits=c("koh", "h2so4", "hf", "naclo", "all"))+
+  ylab(expression(paste(delta^18,"O difference between treated and untreated sample")))+
+  xlab("Chemical used")+
+  ggtitle(expression(paste("Boxplot ", delta^18,"O vs VPDB deviation due to chemical treatment")))+
+  theme_bw()
+
+levels(devData$species)<-oldLevels
+levels(devData$species)
+devDataT<-as.data.table(devData)
+mn3<-devDataT[ , lapply(.SD, mean, na.rm=TRUE), by = paste(devDataT$chemical, devData$species),
+               .SDcols = c("d13cdev", "d18odev")]
+sd3<-devDataT[ , lapply(.SD, sd, na.rm=TRUE), by = devDataT$chemical,
+               .SDcols = c("d13cdev", "d18odev")]
+
+
+dt3<-NULL
+dt3$name<-mn3$paste
+dt3$d13cdev_mean<-mn3$d13cdev
+dt3$d13cdev_sd<-sd3$d13cdev
+
+dt3$d18odev_mean<-mn3$d18odev
+dt3$d18odev_sd<-sd3$d18odev
+dt3<-as.data.table(dt3)
+
+#### END ####
